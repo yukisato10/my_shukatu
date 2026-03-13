@@ -30,7 +30,7 @@ class AdConfig {
   static const String androidBanner =
       'ca-app-pub-8287454355119436/2569422898';
   static const String iosBanner =
-      'ca-app-pub-xxxxxxxxxxxxxxxx/xxxxxxxxxx';
+      'ca-app-pub-8287454355119436/2241193794';
 
   static const String androidInterstitial =
       'ca-app-pub-xxxxxxxxxxxxxxxx/xxxxxxxxxx';
