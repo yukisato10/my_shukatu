@@ -494,10 +494,10 @@ class _HomePageState extends State<HomePage> {
     Widget band(CalendarEvent e) {
       final c = _colorForEventType(e.type);
 
-      const double bandHeight = 13;
-      const double fontSize = 8;
+      const double bandHeight = 16;
+      const double fontSize = 12;
       const double radius = 0;
-      const double paddingH = 1;
+      const double paddingH = 0;
       const double marginTop = 2;
 
       final bandBg = outside ? c.withOpacity(0.22) : c.withOpacity(0.85);
@@ -550,7 +550,7 @@ class _HomePageState extends State<HomePage> {
                 fontSize: 15,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 0),
             Expanded(
               child: ScrollConfiguration(
                 behavior: const _NoGlowScrollBehavior(),
