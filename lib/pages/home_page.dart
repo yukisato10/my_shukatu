@@ -1402,7 +1402,7 @@ class _HomePageState extends State<HomePage> {
             ),
             daysOfWeekHeight: 30,
 
-            rowHeight: 94,
+            rowHeight: 93,
             calendarStyle: const CalendarStyle(
               outsideDaysVisible: true,
               cellMargin: EdgeInsets.zero,
