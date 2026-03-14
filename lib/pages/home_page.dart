@@ -610,7 +610,7 @@ class _HomePageState extends State<HomePage> {
                 const BorderRadius.vertical(top: Radius.circular(18)),
                 clipBehavior: Clip.antiAlias,
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: mq.size.height * 0.42),
+                  constraints: BoxConstraints(maxHeight: mq.size.height * 0.34),
                   child: _DaySheet(
                     date: selected,
                     refreshListenable: _sheetRefresh,
@@ -1388,7 +1388,7 @@ class _HomePageState extends State<HomePage> {
             headerStyle: const HeaderStyle(
               formatButtonVisible: false,
               titleCentered: true,
-              headerPadding: EdgeInsets.symmetric(vertical: 4), // ここで縦幅を縮める
+              headerPadding: EdgeInsets.symmetric(vertical: 0), // ここで縦幅を縮める
               titleTextStyle: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
@@ -1402,7 +1402,7 @@ class _HomePageState extends State<HomePage> {
             ),
             daysOfWeekHeight: 30,
 
-            rowHeight: 90,
+            rowHeight: 94,
             calendarStyle: const CalendarStyle(
               outsideDaysVisible: true,
               cellMargin: EdgeInsets.zero,
