@@ -250,102 +250,7 @@ class _MemoPageState extends State<MemoPage> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _showPrivacyPolicy() async {
-    Navigator.of(context).maybePop();
 
-    const policyText = '''
-プライバシーポリシー
-
-本アプリは、ユーザーの利便性向上および広告配信のために、必要な範囲で情報を取り扱います。
-
-1. 取得する情報
-本アプリでは、以下の情報を取得する場合があります。
-・広告配信に必要な情報
-・端末情報、広告ID等
-・アプリの利用状況に関する情報
-
-2. 利用目的
-取得した情報は、以下の目的で利用します。
-・広告の表示および最適化
-・アプリの改善
-・不具合の調査および品質向上
-
-3. 第三者サービスについて
-本アプリでは、広告配信のために Google AdMob などの第三者サービスを利用する場合があります。
-これらの第三者サービスは、利用者情報を取得し、それぞれのプライバシーポリシーに基づいて利用することがあります。
-
-4. 情報の管理
-本アプリは、取得した情報を適切に管理し、不正アクセス、漏えい、改ざん等の防止に努めます。
-
-5. プライバシーポリシーの変更
-本ポリシーは、必要に応じて変更することがあります。変更後の内容は、本アプリ内または公開ページにて周知します。
-
-6. お問い合わせ
-本ポリシーに関するお問い合わせは、開発者連絡先までお願いいたします。
-''';
-    //https://yukisato10.github.io/policy/policy.html
-
-    await showDialog<void>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('プライバシーポリシー'),
-        content: const SingleChildScrollView(
-          child: Text(
-            policyText,
-            style: TextStyle(fontSize: 13, height: 1.5),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text('閉じる'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEndDrawer() {
-    final cs = Theme.of(context).colorScheme;
-
-    return Drawer(
-      width: 300,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'サポート',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '閉じる',
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: Icon(Icons.privacy_tip_outlined, color: cs.primary),
-              title: const Text(
-                'プライバシーポリシー',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _showPrivacyPolicy,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   @override
   void dispose() {
@@ -365,6 +270,7 @@ class _MemoPageState extends State<MemoPage> {
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
+        centerTitle: true,
         title: const Text(
           'プロフィール',
           style: TextStyle(
@@ -378,15 +284,11 @@ class _MemoPageState extends State<MemoPage> {
             onPressed: _openEditSheet,
             icon: const Icon(Icons.edit),
           ),
-          IconButton(
-            tooltip: 'メニュー',
-            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-            icon: const Icon(Icons.menu),
-          ),
+
           const SizedBox(width: 4),
         ],
       ),
-      endDrawer: _buildEndDrawer(),
+
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),

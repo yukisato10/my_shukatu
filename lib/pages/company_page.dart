@@ -407,6 +407,7 @@ class _CompanyPageState extends State<CompanyPage> {
 
     return AdScaffold(
       appBar: AppBar(
+        centerTitle: true,
         title: const Text(
           '企業管理',
           style: TextStyle(

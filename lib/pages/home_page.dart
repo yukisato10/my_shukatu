@@ -1,21 +1,21 @@
-// home_page.dart（フルコード：帯表示＋短縮ラベル＋セルサイズ維持＋最大4本＋追加/編集/メモをBottomSheet化）
+// home_page.dart
 //
-// 変更点（今回）
-// ・追加/編集を AlertDialog ではなく「下から出る編集画面（BottomSheet）」に変更
-// ・メモも別のBottomSheet（画像のように下から）で編集
-// ・キーボードでの 95px overflow 警告を出にくい構造に変更（isScrollControlled + DraggableScrollableSheet）
+// 修正点
+// ・平日に祝日がある場合、その日の日付数字を赤に変更
+// ・曜日行だけ薄い青
+// ・「○年○月」のヘッダー行は背景色なし
+// ・左上の設定ボタンは BottomSheet を表示
+// ・プライバシーポリシーは BottomSheet で表示
 //
-// 既存の前提（そのまま）
-// ・帯表示（企業名＋種類短縮）
-// ・セルサイズ維持（rowHeightは触らない）
-// ・表示設定（色・絞り込み）
-// ・依存：HiveService / Company / ScheduleItem / ScheduleType
+// 依存：HiveService / Company / ScheduleItem / ScheduleType / jpholiday
+
 import '../widgets/ad_scaffold.dart';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:holiday_jp/holiday_jp.dart' as holiday_jp;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -56,8 +56,6 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-
   OverlayEntry? _daySheetOverlay;
   final ValueNotifier<int> _sheetRefresh = ValueNotifier<int>(0);
 
@@ -122,13 +120,35 @@ class _HomePageState extends State<HomePage> {
 
   DateTime _normalize(DateTime d) => DateTime(d.year, d.month, d.day);
 
+  bool _isSunday(DateTime day) => day.weekday == DateTime.sunday;
+  bool _isSaturday(DateTime day) => day.weekday == DateTime.saturday;
+
+  bool _isHoliday(DateTime day) {
+    final d = DateTime(day.year, day.month, day.day);
+    return holiday_jp.getHoliday(d) != null;
+  }
+
+  Color _dayNumberColor(BuildContext context, DateTime day, {bool outside = false}) {
+    Color color;
+    if (_isSunday(day) || _isHoliday(day)) {
+      color = Colors.red;
+    } else if (_isSaturday(day)) {
+      color = Colors.blue;
+    } else {
+      color = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
+    }
+    return outside ? color.withOpacity(0.45) : color;
+  }
+
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
 
     setState(() {
-      _deadlineColorValue = prefs.getInt(_kDeadlineColorKey) ?? Colors.red.value;
-      _interviewColorValue = prefs.getInt(_kInterviewColorKey) ?? Colors.blue.value;
+      _deadlineColorValue =
+          prefs.getInt(_kDeadlineColorKey) ?? Colors.red.value;
+      _interviewColorValue =
+          prefs.getInt(_kInterviewColorKey) ?? Colors.blue.value;
       _testColorValue = prefs.getInt(_kTestColorKey) ?? Colors.teal.value;
       _gdColorValue = prefs.getInt(_kGdColorKey) ?? Colors.deepOrange.value;
       _eventColorValue = prefs.getInt(_kEventColorKey) ?? Colors.green.value;
@@ -137,7 +157,11 @@ class _HomePageState extends State<HomePage> {
       final cCsv = prefs.getString(_kCompanyFilterKeys) ?? '';
       _companyFilter = cCsv.trim().isEmpty
           ? <int>{}
-          : cCsv.split(',').map((e) => int.tryParse(e.trim())).whereType<int>().toSet();
+          : cCsv
+          .split(',')
+          .map((e) => int.tryParse(e.trim()))
+          .whereType<int>()
+          .toSet();
 
       final sCsv = prefs.getString(_kScheduleTypeFilterKeys) ?? '';
       _scheduleTypeFilter = sCsv.trim().isEmpty
@@ -160,7 +184,9 @@ class _HomePageState extends State<HomePage> {
   Future<void> _saveFilters() async {
     final prefs = await SharedPreferences.getInstance();
     final cCsv = _companyFilter.isEmpty ? '' : _companyFilter.join(',');
-    final sCsv = _scheduleTypeFilter.isEmpty ? '' : _scheduleTypeFilter.map((t) => t.index).join(',');
+    final sCsv = _scheduleTypeFilter.isEmpty
+        ? ''
+        : _scheduleTypeFilter.map((t) => t.index).join(',');
     await prefs.setString(_kCompanyFilterKeys, cCsv);
     await prefs.setString(_kScheduleTypeFilterKeys, sCsv);
   }
@@ -220,7 +246,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // ★短縮ラベル
   String _shortType(ScheduleType t) {
     switch (t) {
       case ScheduleType.esDeadline:
@@ -254,7 +279,10 @@ class _HomePageState extends State<HomePage> {
       if (_companyFilter.isNotEmpty && !_companyFilter.contains(key)) continue;
 
       for (final s in c.schedules) {
-        if (_scheduleTypeFilter.isNotEmpty && !_scheduleTypeFilter.contains(s.type)) continue;
+        if (_scheduleTypeFilter.isNotEmpty &&
+            !_scheduleTypeFilter.contains(s.type)) {
+          continue;
+        }
 
         final dt = s.dateTime.toLocal();
         final dayKey = _normalize(dt);
@@ -279,16 +307,170 @@ class _HomePageState extends State<HomePage> {
     _eventMap = map;
   }
 
-  List<CalendarEvent> _eventsForDay(DateTime day) => _eventMap[_normalize(day)] ?? const [];
+  List<CalendarEvent> _eventsForDay(DateTime day) =>
+      _eventMap[_normalize(day)] ?? const [];
 
   String _fmt(DateTime dt) => dt.toLocal().toString().substring(0, 16);
 
-  // =====================
-  // ★セル描画（セルサイズは絶対変えない）
-  // - rowHeight/CalendarStyleは触らない
-  // - childはSizedBox.expandで「セルいっぱい」に固定
-  // - 帯は最大4本。超過分は +n
-  // =====================
+  Future<void> _showPrivacyPolicy() async {
+    const policyText = '''
+プライバシーポリシー
+
+本アプリは、ユーザーの利便性向上および広告配信のために、必要な範囲で情報を取り扱います。
+
+1. 取得する情報
+本アプリでは、以下の情報を取得する場合があります。
+・広告配信に必要な情報
+・端末情報、広告ID等
+・アプリの利用状況に関する情報
+
+2. 利用目的
+取得した情報は、以下の目的で利用します。
+・広告の表示および最適化
+・アプリの改善
+・不具合の調査および品質向上
+
+3. 第三者サービスについて
+本アプリでは、広告配信のために Google AdMob などの第三者サービスを利用する場合があります。
+これらの第三者サービスは、利用者情報を取得し、それぞれのプライバシーポリシーに基づいて利用することがあります。
+
+4. 情報の管理
+本アプリは、取得した情報を適切に管理し、不正アクセス、漏えい、改ざん等の防止に努めます。
+
+5. プライバシーポリシーの変更
+本ポリシーは、必要に応じて変更することがあります。変更後の内容は、本アプリ内または公開ページにて周知します。
+
+6. お問い合わせ
+本ポリシーに関するお問い合わせは、開発者連絡先までお願いいたします。
+''';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return _BottomSheetScaffold(
+          child: SafeArea(
+            child: DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.92,
+              minChildSize: 0.60,
+              maxChildSize: 0.98,
+              builder: (ctx, controller) {
+                return Material(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 10),
+                      Container(
+                        width: 44,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.black26,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: SizedBox(
+                          height: 40,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text('閉じる'),
+                                ),
+                              ),
+                              Text(
+                                'プライバシーポリシー',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w900),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: ListView(
+                          controller: controller,
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                          children: const [
+                            Text(
+                              policyText,
+                              style: TextStyle(fontSize: 13, height: 1.6),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openSupportSheet() async {
+    final cs = Theme.of(context).colorScheme;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'サポート',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  leading: Icon(Icons.privacy_tip_outlined, color: cs.primary),
+                  title: const Text(
+                    'プライバシーポリシー',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await _showPrivacyPolicy();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _dayCell(
       BuildContext context,
       DateTime day, {
@@ -304,8 +486,7 @@ class _HomePageState extends State<HomePage> {
         ? Theme.of(context).colorScheme.primary.withOpacity(0.10)
         : Colors.transparent;
 
-    final textBase = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
-    final dayTextColor = outside ? textBase.withOpacity(0.35) : textBase;
+    final dayTextColor = _dayNumberColor(context, day, outside: outside);
 
     final events = _eventsForDay(day);
     final shown = events;
@@ -313,7 +494,7 @@ class _HomePageState extends State<HomePage> {
     Widget band(CalendarEvent e) {
       final c = _colorForEventType(e.type);
 
-      const double bandHeight = 11;
+      const double bandHeight = 13;
       const double fontSize = 8;
       const double radius = 0;
       const double paddingH = 1;
@@ -343,30 +524,7 @@ class _HomePageState extends State<HomePage> {
             fontSize: fontSize,
             fontWeight: FontWeight.w700,
             color: bandFg,
-            height: 0.9,
-          ),
-        ),
-      );
-    }
-
-    Widget extraBadge(int n) {
-      if (n <= 0) return const SizedBox.shrink();
-      return Container(
-        height: 12,
-        margin: const EdgeInsets.only(top: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        decoration: BoxDecoration(
-          color: (outside ? Colors.black26 : Colors.black54),
-          borderRadius: BorderRadius.circular(2),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          '+$n',
-          style: TextStyle(
-            fontSize: 8,
-            fontWeight: FontWeight.w800,
-            color: Colors.white.withOpacity(outside ? 0.6 : 1),
-            height: 1.0,
+            height: 1,
           ),
         ),
       );
@@ -389,6 +547,7 @@ class _HomePageState extends State<HomePage> {
               style: TextStyle(
                 color: dayTextColor,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 15,
               ),
             ),
             const SizedBox(height: 2),
@@ -398,7 +557,7 @@ class _HomePageState extends State<HomePage> {
                 child: ListView.builder(
                   padding: EdgeInsets.zero,
                   primary: false,
-                  physics: const ClampingScrollPhysics(), // ★スクロール可能
+                  physics: const ClampingScrollPhysics(),
                   itemCount: shown.length,
                   itemBuilder: (_, i) => band(shown[i]),
                 ),
@@ -409,7 +568,6 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-
 
   void _removeDaySheetOverlay() {
     _daySheetOverlay?.remove();
@@ -448,15 +606,17 @@ class _HomePageState extends State<HomePage> {
               bottom: navH,
               child: Material(
                 elevation: 1,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(18)),
                 clipBehavior: Clip.antiAlias,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: mq.size.height * 0.42),
                   child: _DaySheet(
                     date: selected,
                     refreshListenable: _sheetRefresh,
-                    eventsProvider: () => List<CalendarEvent>.from(_eventsForDay(selected))
-                      ..sort((a, b) => a.dateTime.compareTo(b.dateTime)),
+                    eventsProvider: () => List<CalendarEvent>.from(
+                      _eventsForDay(selected),
+                    )..sort((a, b) => a.dateTime.compareTo(b.dateTime)),
                     scheduleTypeLabel: _scheduleTypeLabel,
                     colorFor: _colorForEventType,
                     iconFor: _iconForEventType,
@@ -474,7 +634,9 @@ class _HomePageState extends State<HomePage> {
                     },
                     onTapEvent: (e) async {
                       _removeDaySheetOverlay();
-                      await Future<void>.delayed(const Duration(milliseconds: 1));
+                      await Future<void>.delayed(
+                        const Duration(milliseconds: 1),
+                      );
                       if (!mounted) return;
                       await _openEventDetailSheet(box, e);
                     },
@@ -492,7 +654,8 @@ class _HomePageState extends State<HomePage> {
 
   bool _sameSchedule(ScheduleItem s, CalendarEvent e) {
     final sameType = s.type == e.scheduleType;
-    final sameDt = s.dateTime.millisecondsSinceEpoch == e.dateTime.millisecondsSinceEpoch;
+    final sameDt =
+        s.dateTime.millisecondsSinceEpoch == e.dateTime.millisecondsSinceEpoch;
     final sn = (s.note ?? '').trim();
     final en = (e.note ?? '').trim();
     return sameType && sameDt && sn == en;
@@ -505,8 +668,14 @@ class _HomePageState extends State<HomePage> {
         title: const Text('確認'),
         content: const Text('この予定を削除しますか？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('キャンセル')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('削除')),
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('削除'),
+          ),
         ],
       ),
     );
@@ -524,12 +693,11 @@ class _HomePageState extends State<HomePage> {
 
     if (!mounted) return;
     _sheetRefresh.value++;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('削除しました')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('削除しました')),
+    );
   }
 
-  // =====================
-  // ★共通：種類ピッカー（BottomSheet）
-  // =====================
   Future<ScheduleType?> _pickScheduleTypeSheet(ScheduleType current) async {
     return showModalBottomSheet<ScheduleType>(
       context: context,
@@ -549,17 +717,27 @@ class _HomePageState extends State<HomePage> {
                       children: [
                         Text(
                           '種類を選択',
-                          style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                          style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                         const Spacer(),
-                        TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('キャンセル')),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, null),
+                          child: const Text('キャンセル'),
+                        ),
                         const SizedBox(width: 8),
-                        FilledButton(onPressed: () => Navigator.pop(ctx, temp), child: const Text('決定')),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(ctx, temp),
+                          child: const Text('決定'),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.55),
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(ctx).size.height * 0.55,
+                      ),
                       child: ListView.separated(
                         shrinkWrap: true,
                         itemCount: ScheduleType.values.length,
@@ -569,8 +747,12 @@ class _HomePageState extends State<HomePage> {
                           final selected = t == temp;
                           return ListTile(
                             dense: true,
-                            title: Text(_scheduleTypeLabel[t] ?? t.name, style: const TextStyle(fontSize: 13)),
-                            trailing: selected ? const Icon(Icons.check) : null,
+                            title: Text(
+                              _scheduleTypeLabel[t] ?? t.name,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            trailing:
+                            selected ? const Icon(Icons.check) : null,
                             onTap: () => setS(() => temp = t),
                           );
                         },
@@ -586,9 +768,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // =====================
-  // ★共通：企業ピッカー（BottomSheet）
-  // =====================
   Future<int?> _pickCompanySheet({
     required List<MapEntry<int, Company>> companies,
     required int current,
@@ -611,17 +790,27 @@ class _HomePageState extends State<HomePage> {
                       children: [
                         Text(
                           '企業を選択',
-                          style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                          style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                         const Spacer(),
-                        TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('キャンセル')),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, null),
+                          child: const Text('キャンセル'),
+                        ),
                         const SizedBox(width: 8),
-                        FilledButton(onPressed: () => Navigator.pop(ctx, temp), child: const Text('決定')),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(ctx, temp),
+                          child: const Text('決定'),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.60),
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(ctx).size.height * 0.60,
+                      ),
                       child: ListView.separated(
                         shrinkWrap: true,
                         itemCount: companies.length,
@@ -632,8 +821,12 @@ class _HomePageState extends State<HomePage> {
                           final selected = k == temp;
                           return ListTile(
                             dense: true,
-                            title: Text(c.name, style: const TextStyle(fontSize: 13)),
-                            trailing: selected ? const Icon(Icons.check) : null,
+                            title: Text(
+                              c.name,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            trailing:
+                            selected ? const Icon(Icons.check) : null,
                             onTap: () => setS(() => temp = k),
                           );
                         },
@@ -649,9 +842,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // =====================
-  // ★共通：日時ピッカー（BottomSheet / CupertinoDatePicker）
-  // =====================
   DateTime _snapToMinuteInterval(DateTime dt, int minuteInterval) {
     final m = dt.minute;
     final snapped = (m ~/ minuteInterval) * minuteInterval;
@@ -678,12 +868,20 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Text(
                       '日時を選択',
-                      style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                      style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const Spacer(),
-                    TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('キャンセル')),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, null),
+                      child: const Text('キャンセル'),
+                    ),
                     const SizedBox(width: 8),
-                    FilledButton(onPressed: () => Navigator.pop(ctx, temp), child: const Text('決定')),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, temp),
+                      child: const Text('決定'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -696,7 +894,8 @@ class _HomePageState extends State<HomePage> {
                     maximumDate: DateTime(now.year + 5),
                     use24hFormat: true,
                     minuteInterval: interval,
-                    onDateTimeChanged: (v) => temp = _snapToMinuteInterval(v, interval),
+                    onDateTimeChanged: (v) =>
+                    temp = _snapToMinuteInterval(v, interval),
                   ),
                 ),
               ],
@@ -706,10 +905,6 @@ class _HomePageState extends State<HomePage> {
       },
     );
   }
-
-  // =====================
-  // ★追加/編集/詳細：BottomSheet（今回の本体）
-  // =====================
 
   Future<bool> _openAddScheduleSheet(Box<Company> box, DateTime day) async {
     final companies = box
@@ -722,7 +917,9 @@ class _HomePageState extends State<HomePage> {
 
     if (companies.isEmpty) {
       if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('先に企業を登録してください。')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('先に企業を登録してください。')),
+      );
       return false;
     }
 
@@ -797,7 +994,9 @@ class _HomePageState extends State<HomePage> {
 
     if (!mounted) return;
     _sheetRefresh.value++;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('更新しました')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('更新しました')),
+    );
   }
 
   Future<void> _openEventDetailSheet(Box<Company> box, CalendarEvent e) async {
@@ -853,8 +1052,13 @@ class _HomePageState extends State<HomePage> {
             initialNote: initialNote,
             scheduleTypeLabel: _scheduleTypeLabel,
             pickCompany: (current) async =>
-            (await _pickCompanySheet(companies: companies, current: current)) ?? current,
-            pickType: (current) async => (await _pickScheduleTypeSheet(current)) ?? current,
+            (await _pickCompanySheet(
+              companies: companies,
+              current: current,
+            )) ??
+                current,
+            pickType: (current) async =>
+            (await _pickScheduleTypeSheet(current)) ?? current,
             pickDateTime: _pickDateTimeSheet,
             mode: mode,
           ),
@@ -863,9 +1067,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // =====================
-  // 表示設定（元のまま）
-  // =====================
   Future<void> _pickColor({
     required String title,
     required int current,
@@ -874,7 +1075,10 @@ class _HomePageState extends State<HomePage> {
     final picked = await showDialog<int>(
       context: context,
       barrierDismissible: true,
-      builder: (ctx) => _ColorPickerDialog(title: title, current: Color(current)),
+      builder: (ctx) => _ColorPickerDialog(
+        title: title,
+        current: Color(current),
+      ),
     );
 
     if (picked == null) return;
@@ -903,7 +1107,8 @@ class _HomePageState extends State<HomePage> {
               final res = await showDialog<Set<int>>(
                 context: ctx,
                 barrierDismissible: false,
-                builder: (_) => _MultiCompanyPickerDialog(box: box, initial: tempCompany),
+                builder: (_) =>
+                    _MultiCompanyPickerDialog(box: box, initial: tempCompany),
               );
               if (res == null) return;
               setS(() => tempCompany = res);
@@ -913,7 +1118,10 @@ class _HomePageState extends State<HomePage> {
               final res = await showDialog<Set<ScheduleType>>(
                 context: ctx,
                 barrierDismissible: false,
-                builder: (_) => _MultiScheduleTypePickerDialog(initial: tempFlow, label: _scheduleTypeLabel),
+                builder: (_) => _MultiScheduleTypePickerDialog(
+                  initial: tempFlow,
+                  label: _scheduleTypeLabel,
+                ),
               );
               if (res == null) return;
               setS(() => tempFlow = res);
@@ -939,16 +1147,28 @@ class _HomePageState extends State<HomePage> {
             }
 
             return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
               child: SafeArea(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('表示設定', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                      Text(
+                        '表示設定',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                       const SizedBox(height: 12),
-                      Text('マーカー色', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                      Text(
+                        'マーカー色',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
@@ -1023,12 +1243,21 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                       const SizedBox(height: 18),
-                      Text('カレンダー絞り込み', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                      Text(
+                        'カレンダー絞り込み',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       const SizedBox(height: 10),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('企業で絞り込み'),
-                        subtitle: Text(tempCompany.isEmpty ? '全企業' : '${tempCompany.length}社を選択中'),
+                        subtitle: Text(
+                          tempCompany.isEmpty
+                              ? '全企業'
+                              : '${tempCompany.length}社を選択中',
+                        ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: pickCompanies,
                       ),
@@ -1036,7 +1265,11 @@ class _HomePageState extends State<HomePage> {
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('選考フローで絞り込み'),
-                        subtitle: Text(tempFlow.isEmpty ? '全フロー' : '${tempFlow.length}種を選択中'),
+                        subtitle: Text(
+                          tempFlow.isEmpty
+                              ? '全フロー'
+                              : '${tempFlow.length}種を選択中',
+                        ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: pickFlows,
                       ),
@@ -1053,7 +1286,10 @@ class _HomePageState extends State<HomePage> {
                             child: const Text('リセット'),
                           ),
                           const Spacer(),
-                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('キャンセル')),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('キャンセル'),
+                          ),
                           const SizedBox(width: 8),
                           FilledButton(
                             onPressed: () async {
@@ -1080,14 +1316,39 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  String _dowLabel(int weekday) {
+    switch (weekday) {
+      case DateTime.sunday:
+        return '日';
+      case DateTime.monday:
+        return '月';
+      case DateTime.tuesday:
+        return '火';
+      case DateTime.wednesday:
+        return '水';
+      case DateTime.thursday:
+        return '木';
+      case DateTime.friday:
+        return '金';
+      case DateTime.saturday:
+        return '土';
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final box = HiveService.companyBox();
     final selected = _selectedDay ?? _normalize(DateTime.now());
 
     return AdScaffold(
-      key: _scaffoldKey,
       appBar: AppBar(
+        centerTitle: true,
+        leading: IconButton(
+          tooltip: '設定',
+          icon: const Icon(Icons.settings),
+          onPressed: _openSupportSheet,
+        ),
         title: const Text(
           'ホーム',
           style: TextStyle(
@@ -1124,27 +1385,88 @@ class _HomePageState extends State<HomePage> {
               _openDaySheetOverlay(b, sel);
             },
             onPageChanged: (focused) => _focusedDay = focused,
-            headerStyle: const HeaderStyle(formatButtonVisible: false, titleCentered: true),
-            daysOfWeekHeight: 28,
-            rowHeight: 90, // ★セルサイズ維持
-            calendarStyle: const CalendarStyle(outsideDaysVisible: true, cellMargin: EdgeInsets.zero),
+            headerStyle: const HeaderStyle(
+              formatButtonVisible: false,
+              titleCentered: true,
+              headerPadding: EdgeInsets.symmetric(vertical: 4), // ここで縦幅を縮める
+              titleTextStyle: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: Colors.black87,
+              ),
+              leftChevronIcon: Icon(Icons.chevron_left, color: Colors.black87, size: 20),
+              rightChevronIcon: Icon(Icons.chevron_right, color: Colors.black87, size: 20),
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+              ),
+            ),
+            daysOfWeekHeight: 30,
+
+            rowHeight: 90,
+            calendarStyle: const CalendarStyle(
+              outsideDaysVisible: true,
+              cellMargin: EdgeInsets.zero,
+            ),
+            daysOfWeekStyle: DaysOfWeekStyle(
+              decoration: BoxDecoration(
+                color: Colors.lightBlue.shade100,
+              ),
+              weekdayStyle: const TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+              weekendStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+              dowTextFormatter: (date, locale) => _dowLabel(date.weekday),
+            ),
             calendarBuilders: CalendarBuilders<CalendarEvent>(
-              defaultBuilder: (context, day, focusedDay) => _dayCell(context, day, isSelected: false, isToday: false),
-              todayBuilder: (context, day, focusedDay) => _dayCell(context, day, isSelected: false, isToday: true),
-              selectedBuilder: (context, day, focusedDay) => _dayCell(context, day, isSelected: true, isToday: false),
-              outsideBuilder: (context, day, focusedDay) =>
-                  _dayCell(context, day, isSelected: false, isToday: false, outside: true),
-              markerBuilder: (context, day, events) => const SizedBox.shrink(), // ドット廃止
+              dowBuilder: (context, day) {
+                final isSun = day.weekday == DateTime.sunday;
+                final isSat = day.weekday == DateTime.saturday;
+
+                Color textColor = Colors.black87;
+                if (isSun) textColor = Colors.red;
+                if (isSat) textColor = Colors.blue;
+
+                return Container(
+                  color: Colors.lightBlue.shade100,
+                  alignment: Alignment.center,
+                  child: Text(
+                    _dowLabel(day.weekday),
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                );
+              },
+              defaultBuilder: (context, day, focusedDay) =>
+                  _dayCell(context, day, isSelected: false, isToday: false),
+              todayBuilder: (context, day, focusedDay) =>
+                  _dayCell(context, day, isSelected: false, isToday: true),
+              selectedBuilder: (context, day, focusedDay) =>
+                  _dayCell(context, day, isSelected: true, isToday: false),
+              outsideBuilder: (context, day, focusedDay) => _dayCell(
+                context,
+                day,
+                isSelected: false,
+                isToday: false,
+                outside: true,
+              ),
+              markerBuilder: (context, day, events) =>
+              const SizedBox.shrink(),
             ),
           );
         },
       ),
-
-
-
     );
   }
 }
+
 class _NoGlowScrollBehavior extends ScrollBehavior {
   const _NoGlowScrollBehavior();
 
@@ -1157,8 +1479,9 @@ class _NoGlowScrollBehavior extends ScrollBehavior {
     return child;
   }
 }
+
 // =====================
-// BottomSheet container（角丸＋影＋SafeArea）
+// BottomSheet container
 // =====================
 class _BottomSheetScaffold extends StatelessWidget {
   final Widget child;
@@ -1177,7 +1500,7 @@ class _BottomSheetScaffold extends StatelessWidget {
 }
 
 // =====================
-// Day sheet widget（下に出る一覧）
+// Day sheet widget
 // =====================
 class _DaySheet extends StatelessWidget {
   final DateTime date;
@@ -1213,7 +1536,10 @@ class _DaySheet extends StatelessWidget {
             Container(
               width: 44,
               height: 5,
-              decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(999)),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(999),
+              ),
             ),
             const SizedBox(height: 10),
             Row(
@@ -1221,10 +1547,16 @@ class _DaySheet extends StatelessWidget {
                 Expanded(
                   child: Text(
                     '${date.month}月${date.day}日の予定',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-                FilledButton.icon(onPressed: onAdd, icon: const Icon(Icons.add), label: const Text('追加')),
+                FilledButton.icon(
+                  onPressed: onAdd,
+                  icon: const Icon(Icons.add),
+                  label: const Text('追加'),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -1234,7 +1566,9 @@ class _DaySheet extends StatelessWidget {
                 valueListenable: refreshListenable,
                 builder: (_, __, ___) {
                   final events = eventsProvider();
-                  if (events.isEmpty) return const Center(child: Text('この日の予定はありません。'));
+                  if (events.isEmpty) {
+                    return const Center(child: Text('この日の予定はありません。'));
+                  }
 
                   return ListView.separated(
                     padding: EdgeInsets.zero,
@@ -1242,29 +1576,34 @@ class _DaySheet extends StatelessWidget {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (ctx, i) {
                       final e = events[i];
-                      final kind = scheduleTypeLabel[e.scheduleType] ?? e.scheduleType.name;
+                      final kind =
+                          scheduleTypeLabel[e.scheduleType] ?? e.scheduleType.name;
                       final timeText = fmt(e.dateTime);
-                      final note = (e.note ?? '').trim();
-                      final subtitle = note.isEmpty ? '$kind / $timeText' : '$kind / $timeText\n$note';
 
                       return ListTile(
                         dense: true,
                         visualDensity: VisualDensity.compact,
                         minLeadingWidth: 24,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
-
-                        leading: Icon(iconFor(e.type), color: colorFor(e.type), size: 18),
-
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 0,
+                          vertical: 2,
+                        ),
+                        leading: Icon(
+                          iconFor(e.type),
+                          color: colorFor(e.type),
+                          size: 18,
+                        ),
                         title: Text(
                           e.company.name,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-
                         subtitle: Text(
                           '$kind / $timeText',
                           style: const TextStyle(fontSize: 11),
                         ),
-
                         onTap: () => onTapEvent(e),
                       );
                     },
@@ -1321,7 +1660,10 @@ class _EventDetailSheet extends StatelessWidget {
                 Container(
                   width: 44,
                   height: 5,
-                  decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(999)),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Padding(
@@ -1355,7 +1697,12 @@ class _EventDetailSheet extends StatelessWidget {
                     controller: controller,
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                     children: [
-                      Text(event.company.name, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+                      Text(
+                        event.company.name,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                       const SizedBox(height: 10),
                       Row(
                         children: [
@@ -1371,7 +1718,11 @@ class _EventDetailSheet extends StatelessWidget {
                       const SizedBox(height: 6),
                       Text(note.isEmpty ? '（メモなし）' : note),
                       const SizedBox(height: 24),
-                      FilledButton.icon(onPressed: onEdit, icon: const Icon(Icons.edit), label: const Text('編集')),
+                      FilledButton.icon(
+                        onPressed: onEdit,
+                        icon: const Icon(Icons.edit),
+                        label: const Text('編集'),
+                      ),
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
                         onPressed: onDelete,
@@ -1507,7 +1858,10 @@ class _ScheduleEditorSheetState extends State<_ScheduleEditorSheet> {
                 Container(
                   width: 44,
                   height: 5,
-                  decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(999)),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Padding(
@@ -1519,7 +1873,12 @@ class _ScheduleEditorSheetState extends State<_ScheduleEditorSheet> {
                         child: const Text('キャンセル'),
                       ),
                       const Spacer(),
-                      Text(widget.title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                      Text(
+                        widget.title,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                       const Spacer(),
                       TextButton(
                         onPressed: _saving
@@ -1630,7 +1989,9 @@ class _SheetRow extends StatelessWidget {
     final box = BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.4)),
+      border: Border.all(
+        color: Theme.of(context).dividerColor.withOpacity(0.4),
+      ),
     );
 
     return InkWell(
@@ -1641,12 +2002,24 @@ class _SheetRow extends StatelessWidget {
         decoration: box,
         child: Row(
           children: [
-            SizedBox(width: 72, child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700))),
+            SizedBox(
+              width: 72,
+              child: Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
             Expanded(
               child: Text(
                 value,
                 textAlign: TextAlign.right,
-                style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.85)),
+                style: TextStyle(
+                  color: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.color
+                      ?.withOpacity(0.85),
+                ),
               ),
             ),
             const SizedBox(width: 10),
@@ -1659,7 +2032,7 @@ class _SheetRow extends StatelessWidget {
 }
 
 // =====================
-// メモ編集BottomSheet（画像の「メモ」画面っぽく）
+// メモ編集BottomSheet
 // =====================
 class _MemoEditorSheet extends StatefulWidget {
   final String initial;
@@ -1705,7 +2078,10 @@ class _MemoEditorSheetState extends State<_MemoEditorSheet> {
                 Container(
                   width: 44,
                   height: 5,
-                  decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(999)),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Padding(
@@ -1714,7 +2090,12 @@ class _MemoEditorSheetState extends State<_MemoEditorSheet> {
                     children: [
                       const SizedBox(width: 80),
                       const Spacer(),
-                      Text(widget.title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                      Text(
+                        widget.title,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                       const Spacer(),
                       TextButton(
                         onPressed: () => Navigator.pop(context, _ctrl.text),
@@ -1755,14 +2136,18 @@ class _MemoEditorSheetState extends State<_MemoEditorSheet> {
 }
 
 // =====================
-// Color chip / picker / filters（元コードそのまま）
+// Color chip / picker / filters
 // =====================
 class _ColorChip extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback onTap;
 
-  const _ColorChip({required this.label, required this.color, required this.onTap});
+  const _ColorChip({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1773,11 +2158,21 @@ class _ColorChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(999),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(border: Border.all(color: border), borderRadius: BorderRadius.circular(999)),
+        decoration: BoxDecoration(
+          border: Border.all(color: border),
+          borderRadius: BorderRadius.circular(999),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 14, height: 14, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+            ),
             const SizedBox(width: 8),
             Text(label),
             const SizedBox(width: 6),
@@ -1792,7 +2187,10 @@ class _ColorPickerDialog extends StatelessWidget {
   final String title;
   final Color current;
 
-  const _ColorPickerDialog({required this.title, required this.current});
+  const _ColorPickerDialog({
+    required this.title,
+    required this.current,
+  });
 
   static final List<Color> _preset = [
     Colors.red,
@@ -1838,17 +2236,29 @@ class _ColorPickerDialog extends StatelessWidget {
                   color: c,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: selected ? Theme.of(context).colorScheme.primary : Colors.black.withOpacity(0.15),
+                    color: selected
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.black.withOpacity(0.15),
                     width: selected ? 3 : 1,
                   ),
                 ),
-                child: selected ? Icon(Icons.check, color: Theme.of(context).colorScheme.onPrimary) : null,
+                child: selected
+                    ? Icon(
+                  Icons.check,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                )
+                    : null,
               ),
             );
           }).toList(),
         ),
       ),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('閉じる'),
+        ),
+      ],
     );
   }
 }
@@ -1857,10 +2267,14 @@ class _MultiCompanyPickerDialog extends StatefulWidget {
   final Box<Company> box;
   final Set<int> initial;
 
-  const _MultiCompanyPickerDialog({required this.box, required this.initial});
+  const _MultiCompanyPickerDialog({
+    required this.box,
+    required this.initial,
+  });
 
   @override
-  State<_MultiCompanyPickerDialog> createState() => _MultiCompanyPickerDialogState();
+  State<_MultiCompanyPickerDialog> createState() =>
+      _MultiCompanyPickerDialogState();
 }
 
 class _MultiCompanyPickerDialogState extends State<_MultiCompanyPickerDialog> {
@@ -1915,10 +2329,19 @@ class _MultiCompanyPickerDialogState extends State<_MultiCompanyPickerDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => setState(() => _selected.clear()), child: const Text('全解除')),
+        TextButton(
+          onPressed: () => setState(() => _selected.clear()),
+          child: const Text('全解除'),
+        ),
         const Spacer(),
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル')),
-        FilledButton(onPressed: () => Navigator.pop(context, _selected), child: const Text('OK')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('キャンセル'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _selected),
+          child: const Text('OK'),
+        ),
       ],
     );
   }
@@ -1928,13 +2351,18 @@ class _MultiScheduleTypePickerDialog extends StatefulWidget {
   final Set<ScheduleType> initial;
   final Map<ScheduleType, String> label;
 
-  const _MultiScheduleTypePickerDialog({required this.initial, required this.label});
+  const _MultiScheduleTypePickerDialog({
+    required this.initial,
+    required this.label,
+  });
 
   @override
-  State<_MultiScheduleTypePickerDialog> createState() => _MultiScheduleTypePickerDialogState();
+  State<_MultiScheduleTypePickerDialog> createState() =>
+      _MultiScheduleTypePickerDialogState();
 }
 
-class _MultiScheduleTypePickerDialogState extends State<_MultiScheduleTypePickerDialog> {
+class _MultiScheduleTypePickerDialogState
+    extends State<_MultiScheduleTypePickerDialog> {
   late Set<ScheduleType> _selected;
 
   @override
@@ -1976,10 +2404,19 @@ class _MultiScheduleTypePickerDialogState extends State<_MultiScheduleTypePicker
         ),
       ),
       actions: [
-        TextButton(onPressed: () => setState(() => _selected.clear()), child: const Text('全解除')),
+        TextButton(
+          onPressed: () => setState(() => _selected.clear()),
+          child: const Text('全解除'),
+        ),
         const Spacer(),
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル')),
-        FilledButton(onPressed: () => Navigator.pop(context, _selected), child: const Text('OK')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('キャンセル'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _selected),
+          child: const Text('OK'),
+        ),
       ],
     );
   }
