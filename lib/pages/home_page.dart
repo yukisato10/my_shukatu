@@ -1400,7 +1400,7 @@ class _HomePageState extends State<HomePage> {
                 color: Colors.transparent,
               ),
             ),
-            daysOfWeekHeight: 30,
+            daysOfWeekHeight: 25,
 
             rowHeight: 93,
             calendarStyle: const CalendarStyle(
@@ -1431,15 +1431,23 @@ class _HomePageState extends State<HomePage> {
                 if (isSun) textColor = Colors.red;
                 if (isSat) textColor = Colors.blue;
 
+                final borderColor = Theme.of(context).dividerColor.withOpacity(0.40);
+
                 return Container(
-                  color: Colors.lightBlue.shade100,
                   alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.lightBlue.shade200,
+                    border: Border.all(
+                      color: borderColor,
+                      width: 0.5,
+                    ),
+                  ),
                   child: Text(
                     _dowLabel(day.weekday),
                     style: TextStyle(
                       color: textColor,
                       fontWeight: FontWeight.w800,
-                      fontSize: 15,
+                      fontSize: 12,
                     ),
                   ),
                 );
