@@ -1343,6 +1343,7 @@ class _HomePageState extends State<HomePage> {
 
     return AdScaffold(
       appBar: AppBar(
+        toolbarHeight: 30,
         centerTitle: true,
         leading: IconButton(
           tooltip: '設定',
@@ -1350,7 +1351,7 @@ class _HomePageState extends State<HomePage> {
           onPressed: _openSupportSheet,
         ),
         title: const Text(
-          'ホーム',
+          '',
           style: TextStyle(
             fontWeight: FontWeight.w800,
             fontSize: 18,
@@ -1402,7 +1403,7 @@ class _HomePageState extends State<HomePage> {
             ),
             daysOfWeekHeight: 25,
 
-            rowHeight: 93,
+            rowHeight: 98,
             calendarStyle: const CalendarStyle(
               outsideDaysVisible: true,
               cellMargin: EdgeInsets.zero,
