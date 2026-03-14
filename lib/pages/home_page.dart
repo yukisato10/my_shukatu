@@ -495,7 +495,7 @@ class _HomePageState extends State<HomePage> {
       final c = _colorForEventType(e.type);
 
       const double bandHeight = 16;
-      const double fontSize = 12;
+      const double fontSize = 10;
       const double radius = 0;
       const double paddingH = 0;
       const double marginTop = 2;
