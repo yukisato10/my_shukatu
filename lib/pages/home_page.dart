@@ -494,7 +494,7 @@ class _HomePageState extends State<HomePage> {
     Widget band(CalendarEvent e) {
       final c = _colorForEventType(e.type);
 
-      const double bandHeight = 16;
+      const double bandHeight = 14;
       const double fontSize = 10;
       const double radius = 0;
       const double paddingH = 0;
@@ -1403,7 +1403,7 @@ class _HomePageState extends State<HomePage> {
             ),
             daysOfWeekHeight: 25,
 
-            rowHeight: 98,
+            rowHeight: 96,
             calendarStyle: const CalendarStyle(
               outsideDaysVisible: true,
               cellMargin: EdgeInsets.zero,
