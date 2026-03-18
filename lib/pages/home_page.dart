@@ -2271,7 +2271,6 @@ class _ColorPickerDialog extends StatelessWidget {
     );
   }
 }
-
 class _MultiCompanyPickerDialog extends StatefulWidget {
   final Box<Company> box;
   final Set<int> initial;
@@ -2342,7 +2341,6 @@ class _MultiCompanyPickerDialogState extends State<_MultiCompanyPickerDialog> {
           onPressed: () => setState(() => _selected.clear()),
           child: const Text('全解除'),
         ),
-        const Spacer(),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('キャンセル'),
@@ -2417,7 +2415,6 @@ class _MultiScheduleTypePickerDialogState
           onPressed: () => setState(() => _selected.clear()),
           child: const Text('全解除'),
         ),
-        const Spacer(),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('キャンセル'),
