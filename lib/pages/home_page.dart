@@ -6,8 +6,9 @@
 // ・「○年○月」のヘッダー行は背景色なし
 // ・左上の設定ボタンは BottomSheet を表示
 // ・プライバシーポリシーは BottomSheet で表示
+// ・月ごとの行数（4/5/6行）に応じて、カレンダーの各行の高さを自動調整
 //
-// 依存：HiveService / Company / ScheduleItem / ScheduleType / jpholiday
+// 依存：HiveService / Company / ScheduleItem / ScheduleType / holiday_jp / shared_preferences / table_calendar
 
 import '../widgets/ad_scaffold.dart';
 
@@ -128,7 +129,8 @@ class _HomePageState extends State<HomePage> {
     return holiday_jp.getHoliday(d) != null;
   }
 
-  Color _dayNumberColor(BuildContext context, DateTime day, {bool outside = false}) {
+  Color _dayNumberColor(BuildContext context, DateTime day,
+      {bool outside = false}) {
     Color color;
     if (_isSunday(day) || _isHoliday(day)) {
       color = Colors.red;
@@ -138,6 +140,25 @@ class _HomePageState extends State<HomePage> {
       color = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
     }
     return outside ? color.withOpacity(0.45) : color;
+  }
+
+  int _daysInMonth(DateTime month) {
+    final beginningNextMonth = (month.month < 12)
+        ? DateTime(month.year, month.month + 1, 1)
+        : DateTime(month.year + 1, 1, 1);
+    return beginningNextMonth.subtract(const Duration(days: 1)).day;
+  }
+
+  /// 日曜始まりで、その月が何行必要か返す
+  int _calendarRowCount(DateTime month) {
+    final firstDay = DateTime(month.year, month.month, 1);
+    final daysInMonth = _daysInMonth(month);
+
+    // 日曜=0, 月曜=1, ... 土曜=6
+    final startOffset = firstDay.weekday % 7;
+    final cellCount = startOffset + daysInMonth;
+
+    return (cellCount / 7).ceil();
   }
 
   Future<void> _loadPrefs() async {
@@ -1370,105 +1391,130 @@ class _HomePageState extends State<HomePage> {
         builder: (context, Box<Company> b, _) {
           _rebuildEventMapFromCompanies(b);
 
-          return TableCalendar<CalendarEvent>(
-            locale: 'ja_JP',
-            startingDayOfWeek: StartingDayOfWeek.sunday,
-            firstDay: DateTime.utc(2020, 1, 1),
-            lastDay: DateTime.utc(2035, 12, 31),
-            focusedDay: _focusedDay,
-            selectedDayPredicate: (day) => isSameDay(day, selected),
-            eventLoader: _eventsForDay,
-            onDaySelected: (sel, focused) {
-              setState(() {
-                _selectedDay = _normalize(sel);
-                _focusedDay = focused;
-              });
-              _openDaySheetOverlay(b, sel);
-            },
-            onPageChanged: (focused) => _focusedDay = focused,
-            headerStyle: const HeaderStyle(
-              formatButtonVisible: false,
-              titleCentered: true,
-              headerPadding: EdgeInsets.symmetric(vertical: 0), // ここで縦幅を縮める
-              titleTextStyle: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: Colors.black87,
-              ),
-              leftChevronIcon: Icon(Icons.chevron_left, color: Colors.black87, size: 20),
-              rightChevronIcon: Icon(Icons.chevron_right, color: Colors.black87, size: 20),
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-              ),
-            ),
-            daysOfWeekHeight: 25,
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final rows = _calendarRowCount(_focusedDay);
 
-            rowHeight: 96,
-            calendarStyle: const CalendarStyle(
-              outsideDaysVisible: true,
-              cellMargin: EdgeInsets.zero,
-            ),
-            daysOfWeekStyle: DaysOfWeekStyle(
-              decoration: BoxDecoration(
-                color: Colors.lightBlue.shade100,
-              ),
-              weekdayStyle: const TextStyle(
-                color: Colors.black87,
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-              ),
-              weekendStyle: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-              ),
-              dowTextFormatter: (date, locale) => _dowLabel(date.weekday),
-            ),
-            calendarBuilders: CalendarBuilders<CalendarEvent>(
-              dowBuilder: (context, day) {
-                final isSun = day.weekday == DateTime.sunday;
-                final isSat = day.weekday == DateTime.saturday;
+              const double headerHeightEstimate = 44;
+              const double daysOfWeekHeight = 25;
+              const double verticalAdjustment = 4;
 
-                Color textColor = Colors.black87;
-                if (isSun) textColor = Colors.red;
-                if (isSat) textColor = Colors.blue;
+              final availableHeight = constraints.maxHeight;
+              final usableHeight = availableHeight -
+                  headerHeightEstimate -
+                  daysOfWeekHeight -
+                  verticalAdjustment;
 
-                final borderColor = Theme.of(context).dividerColor.withOpacity(0.40);
+              final rowHeight = usableHeight / rows;
 
-                return Container(
-                  alignment: Alignment.center,
+              return TableCalendar<CalendarEvent>(
+                locale: 'ja_JP',
+                startingDayOfWeek: StartingDayOfWeek.sunday,
+                firstDay: DateTime.utc(2020, 1, 1),
+                lastDay: DateTime.utc(2035, 12, 31),
+                focusedDay: _focusedDay,
+                selectedDayPredicate: (day) => isSameDay(day, selected),
+                eventLoader: _eventsForDay,
+                onDaySelected: (sel, focused) {
+                  setState(() {
+                    _selectedDay = _normalize(sel);
+                    _focusedDay = focused;
+                  });
+                  _openDaySheetOverlay(b, sel);
+                },
+                onPageChanged: (focused) {
+                  setState(() {
+                    _focusedDay = focused;
+                  });
+                },
+                sixWeekMonthsEnforced: false,
+                headerStyle: const HeaderStyle(
+                  formatButtonVisible: false,
+                  titleCentered: true,
+                  headerPadding: EdgeInsets.symmetric(vertical: 0),
+                  titleTextStyle: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
+                  ),
+                  leftChevronIcon:
+                  Icon(Icons.chevron_left, color: Colors.black87, size: 20),
+                  rightChevronIcon:
+                  Icon(Icons.chevron_right, color: Colors.black87, size: 20),
                   decoration: BoxDecoration(
-                    color: Colors.lightBlue.shade200,
-                    border: Border.all(
-                      color: borderColor,
-                      width: 0.5,
-                    ),
+                    color: Colors.transparent,
                   ),
-                  child: Text(
-                    _dowLabel(day.weekday),
-                    style: TextStyle(
-                      color: textColor,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
-                    ),
+                ),
+                daysOfWeekHeight: daysOfWeekHeight,
+                rowHeight: rowHeight,
+                calendarStyle: const CalendarStyle(
+                  outsideDaysVisible: true,
+                  cellMargin: EdgeInsets.zero,
+                ),
+                daysOfWeekStyle: DaysOfWeekStyle(
+                  decoration: BoxDecoration(
+                    color: Colors.lightBlue.shade100,
                   ),
-                );
-              },
-              defaultBuilder: (context, day, focusedDay) =>
-                  _dayCell(context, day, isSelected: false, isToday: false),
-              todayBuilder: (context, day, focusedDay) =>
-                  _dayCell(context, day, isSelected: false, isToday: true),
-              selectedBuilder: (context, day, focusedDay) =>
-                  _dayCell(context, day, isSelected: true, isToday: false),
-              outsideBuilder: (context, day, focusedDay) => _dayCell(
-                context,
-                day,
-                isSelected: false,
-                isToday: false,
-                outside: true,
-              ),
-              markerBuilder: (context, day, events) =>
-              const SizedBox.shrink(),
-            ),
+                  weekdayStyle: const TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                  weekendStyle: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                  dowTextFormatter: (date, locale) => _dowLabel(date.weekday),
+                ),
+                calendarBuilders: CalendarBuilders<CalendarEvent>(
+                  dowBuilder: (context, day) {
+                    final isSun = day.weekday == DateTime.sunday;
+                    final isSat = day.weekday == DateTime.saturday;
+
+                    Color textColor = Colors.black87;
+                    if (isSun) textColor = Colors.red;
+                    if (isSat) textColor = Colors.blue;
+
+                    final borderColor =
+                    Theme.of(context).dividerColor.withOpacity(0.40);
+
+                    return Container(
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.lightBlue.shade200,
+                        border: Border.all(
+                          color: borderColor,
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Text(
+                        _dowLabel(day.weekday),
+                        style: TextStyle(
+                          color: textColor,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    );
+                  },
+                  defaultBuilder: (context, day, focusedDay) =>
+                      _dayCell(context, day, isSelected: false, isToday: false),
+                  todayBuilder: (context, day, focusedDay) =>
+                      _dayCell(context, day, isSelected: false, isToday: true),
+                  selectedBuilder: (context, day, focusedDay) =>
+                      _dayCell(context, day, isSelected: true, isToday: false),
+                  outsideBuilder: (context, day, focusedDay) => _dayCell(
+                    context,
+                    day,
+                    isSelected: false,
+                    isToday: false,
+                    outside: true,
+                  ),
+                  markerBuilder: (context, day, events) =>
+                  const SizedBox.shrink(),
+                ),
+              );
+            },
           );
         },
       ),
@@ -1926,7 +1972,8 @@ class _ScheduleEditorSheetState extends State<_ScheduleEditorSheet> {
                         onTap: _saving
                             ? null
                             : () async {
-                          final picked = await widget.pickCompany(_companyKey);
+                          final picked =
+                          await widget.pickCompany(_companyKey);
                           if (!mounted) return;
                           setState(() => _companyKey = picked);
                         },
@@ -2271,6 +2318,7 @@ class _ColorPickerDialog extends StatelessWidget {
     );
   }
 }
+
 class _MultiCompanyPickerDialog extends StatefulWidget {
   final Box<Company> box;
   final Set<int> initial;

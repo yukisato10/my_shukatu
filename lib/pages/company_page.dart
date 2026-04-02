@@ -455,19 +455,19 @@ class _CompanyPageState extends State<CompanyPage> {
                             ?.withOpacity(0.75),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    FilledButton.icon(
-                      onPressed: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const CompanyFormPage(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.add),
-                      label: const Text('企業を追加'),
-                    ),
+                    // const SizedBox(height: 14),
+                    // FilledButton.icon(
+                    //   onPressed: () async {
+                    //     await Navigator.push(
+                    //       context,
+                    //       MaterialPageRoute(
+                    //         builder: (_) => const CompanyFormPage(),
+                    //       ),
+                    //     );
+                    //   },
+                    //   icon: const Icon(Icons.add),
+                    //   label: const Text('企業を追加'),
+                    // ),
                   ],
                 ),
               ),
