@@ -522,38 +522,50 @@ class _CompanyPageState extends State<CompanyPage> {
           onPressed: _exitSearchMode,
         ),
         titleSpacing: 0,
-        title: Container(
-          height: 40,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3F4F6),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: TextField(
-            controller: _searchCtrl,
-            focusNode: _searchFocus,
-            autofocus: true,
-            textInputAction: TextInputAction.search,
-            onChanged: (_) => setState(() {}),
-            style: const TextStyle(fontSize: 14),
-            decoration: InputDecoration(
-              hintText: '企業名 ・ 業界 で検索',
-              border: InputBorder.none,
-              prefixIcon: const Icon(Icons.search_rounded, size: 20),
-              suffixIcon: _searchCtrl.text.isEmpty
-                  ? null
-                  : IconButton(
-                tooltip: 'クリア',
-                onPressed: () {
-                  _searchCtrl.clear();
-                  setState(() {});
-                },
-                icon: const Icon(Icons.close_rounded, size: 18),
+        title: Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: TextField(
+                  controller: _searchCtrl,
+                  focusNode: _searchFocus,
+                  autofocus: true,
+                  textInputAction: TextInputAction.search,
+                  onChanged: (_) => setState(() {}),
+                  style: const TextStyle(fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: '企業名 ・ 業界 で検索',
+                    border: InputBorder.none,
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                    suffixIcon: _searchCtrl.text.isEmpty
+                        ? null
+                        : IconButton(
+                      tooltip: 'クリア',
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
               ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
             ),
-          ),
+            const SizedBox(width: 10), // ← これが重要
+          ],
         ),
       );
+
+
+
+
+
     }
 
     return AppBar(
