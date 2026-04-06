@@ -1,6 +1,8 @@
-// company_page.dart（フルコード：現代的カードUI＋表示設定BottomSheet＋業界絞り込み＋長押し削除）
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../widgets/ad_scaffold.dart';
 import '../db/hive_service.dart';
 import '../models/company.dart';
@@ -24,7 +26,10 @@ class _CompanyPageState extends State<CompanyPage> {
   String? _industryFilter; // null = 全業界
   CompanySortMode _sortMode = CompanySortMode.updatedAt;
 
-  // 例：選考過程の並び（上ほど優先）
+  final TextEditingController _searchCtrl = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
+  bool _searchMode = false;
+
   static const List<SelectionPhase> _phaseOrderTop = [
     SelectionPhase.offer,
     SelectionPhase.finalInterview,
@@ -40,6 +45,13 @@ class _CompanyPageState extends State<CompanyPage> {
     SelectionPhase.declined,
     SelectionPhase.rejected,
   ];
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
 
   static int _phaseRank(SelectionPhase p) {
     final idx = _phaseOrderTop.indexOf(p);
@@ -65,31 +77,61 @@ class _CompanyPageState extends State<CompanyPage> {
     return m[p] ?? p.name;
   }
 
-  // ★未選択(null)を最後に送る：高→中→低→未選択
-  static int _desireRank(dynamic desireLevel) {
-    if (desireLevel == null) return 3;
-
-    final name = desireLevel.toString();
-    if (name.contains('high')) return 0;
-    if (name.contains('mid')) return 1;
-    if (name.contains('low')) return 2;
-    return 3; // 想定外は未選択扱い
+  static int _desireRank(DesireLevel? desireLevel) {
+    switch (desireLevel) {
+      case DesireLevel.high:
+        return 0;
+      case DesireLevel.mid:
+        return 1;
+      case DesireLevel.low:
+        return 2;
+      case null:
+        return 3;
+    }
   }
 
-  static String _desireLabel(dynamic desireLevel) {
-    if (desireLevel == null) return '未選択';
-
-    final name = desireLevel.toString();
-    if (name.contains('high')) return '高';
-    if (name.contains('mid')) return '中';
-    if (name.contains('low')) return '低';
-    return '未選択';
+  static String _desireLabel(DesireLevel? desireLevel) {
+    switch (desireLevel) {
+      case DesireLevel.high:
+        return '高';
+      case DesireLevel.mid:
+        return '中';
+      case DesireLevel.low:
+        return '低';
+      case null:
+        return '未選択';
+    }
   }
 
   List<Company> _filtered(List<Company> items) {
     final f = _industryFilter;
-    if (f == null || f.trim().isEmpty || f == '全業界') return items;
-    return items.where((c) => (c.industry ?? '').trim() == f).toList();
+    final q = _searchCtrl.text.trim().toLowerCase();
+
+    return items.where((c) {
+      final industryOk = (f == null || f.trim().isEmpty || f == '全業界')
+          ? true
+          : (c.industry ?? '').trim() == f;
+
+      if (!industryOk) return false;
+
+      if (q.isEmpty) return true;
+
+      final name = c.name.toLowerCase();
+      final industry = (c.industry ?? '').toLowerCase();
+      final phase = _phaseLabel(c.phase).toLowerCase();
+      final desire = _desireLabel(c.desireLevel).toLowerCase();
+      final url = (c.mypageUrl ?? '').toLowerCase();
+      final id = (c.mypageid ?? '').toLowerCase();
+      final pass = (c.mypagePassword ?? '').toLowerCase();
+
+      return name.contains(q) ||
+          industry.contains(q) ||
+          phase.contains(q) ||
+          desire.contains(q) ||
+          url.contains(q) ||
+          id.contains(q) ||
+          pass.contains(q);
+    }).toList();
   }
 
   int _compare(Company a, Company b) {
@@ -105,8 +147,8 @@ class _CompanyPageState extends State<CompanyPage> {
         return a.name.compareTo(b.name);
 
       case CompanySortMode.desire:
-        final ar = _desireRank((a as dynamic).desireLevel);
-        final br = _desireRank((b as dynamic).desireLevel);
+        final ar = _desireRank(a.desireLevel);
+        final br = _desireRank(b.desireLevel);
         final c1 = ar.compareTo(br);
         if (c1 != 0) return c1;
 
@@ -137,7 +179,7 @@ class _CompanyPageState extends State<CompanyPage> {
         final s = (c.industry ?? '').trim();
         return s.isEmpty ? '業界未設定' : s;
       case CompanySortMode.desire:
-        return '志望度：${_desireLabel((c as dynamic).desireLevel)}';
+        return '志望度：${_desireLabel(c.desireLevel)}';
       case CompanySortMode.phase:
         return _phaseLabel(c.phase);
     }
@@ -154,6 +196,59 @@ class _CompanyPageState extends State<CompanyPage> {
       case CompanySortMode.phase:
         return '選考過程順';
     }
+  }
+
+  String _normalizeUrl(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return '';
+    if (text.startsWith('http://') || text.startsWith('https://')) {
+      return text;
+    }
+    return 'https://$text';
+  }
+
+  Future<void> _openMyPage(String url) async {
+    final normalized = _normalizeUrl(url);
+    if (normalized.isEmpty) return;
+
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('URLの形式が正しくありません')),
+      );
+      return;
+    }
+
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('URLを開けませんでした')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('URLを開けませんでした')),
+      );
+    }
+  }
+
+  Future<void> _copyText(String text, String label) async {
+    if (text.trim().isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$labelをコピーしました'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _deleteCompany(Company c) async {
@@ -190,19 +285,16 @@ class _CompanyPageState extends State<CompanyPage> {
     );
   }
 
-  // =====================
-  // ★業界ピッカー（BottomSheet）
-  // =====================
   Future<String?> _pickIndustrySheet({
     required List<String> industries,
-    required String? current, // null = 全業界
+    required String? current,
   }) async {
     return showModalBottomSheet<String?>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) {
-        String? temp = current; // null=全業界
+        String? temp = current;
         return StatefulBuilder(
           builder: (ctx, setS) {
             return SafeArea(
@@ -243,7 +335,7 @@ class _CompanyPageState extends State<CompanyPage> {
                       ),
                       child: ListView.separated(
                         shrinkWrap: true,
-                        itemCount: industries.length + 1, // +1 = 全業界
+                        itemCount: industries.length + 1,
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (_, i) {
                           final val = (i == 0) ? null : industries[i - 1];
@@ -278,7 +370,7 @@ class _CompanyPageState extends State<CompanyPage> {
       ..sort();
 
     CompanySortMode tempSort = _sortMode;
-    String? tempIndustry = _industryFilter; // null=全業界
+    String? tempIndustry = _industryFilter;
 
     final res = await showModalBottomSheet<_SortFilterResult>(
       context: context,
@@ -392,13 +484,104 @@ class _CompanyPageState extends State<CompanyPage> {
       },
     );
 
-    if (!mounted) return;
-    if (res == null) return;
+    if (!mounted || res == null) return;
 
     setState(() {
       _sortMode = res.sortMode;
-      _industryFilter = res.industry; // null=全業界
+      _industryFilter = res.industry;
     });
+  }
+
+  void _enterSearchMode() {
+    setState(() {
+      _searchMode = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocus.requestFocus();
+      }
+    });
+  }
+
+  void _exitSearchMode() {
+    setState(() {
+      _searchMode = false;
+      _searchCtrl.clear();
+    });
+    _searchFocus.unfocus();
+  }
+
+  PreferredSizeWidget _buildAppBar(Box<Company> box) {
+    if (_searchMode) {
+      return AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          onPressed: _exitSearchMode,
+        ),
+        titleSpacing: 0,
+        title: Container(
+          height: 40,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: TextField(
+            controller: _searchCtrl,
+            focusNode: _searchFocus,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            onChanged: (_) => setState(() {}),
+            style: const TextStyle(fontSize: 14),
+            decoration: InputDecoration(
+              hintText: '企業名 ・ 業界 で検索',
+              border: InputBorder.none,
+              prefixIcon: const Icon(Icons.search_rounded, size: 20),
+              suffixIcon: _searchCtrl.text.isEmpty
+                  ? null
+                  : IconButton(
+                tooltip: 'クリア',
+                onPressed: () {
+                  _searchCtrl.clear();
+                  setState(() {});
+                },
+                icon: const Icon(Icons.close_rounded, size: 18),
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return AppBar(
+      centerTitle: true,
+      elevation: 0,
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      title: const Text(
+        '企業管理',
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 18,
+          color: Colors.black,
+        ),
+      ),
+      actions: [
+        IconButton(
+          tooltip: '企業検索',
+          icon: const Icon(Icons.search_rounded),
+          onPressed: _enterSearchMode,
+        ),
+        IconButton(
+          tooltip: '表示設定',
+          icon: const Icon(Icons.tune_rounded),
+          onPressed: () => _openSortFilterSheet(box),
+        ),
+      ],
+    );
   }
 
   @override
@@ -406,81 +589,58 @@ class _CompanyPageState extends State<CompanyPage> {
     final box = HiveService.companyBox();
 
     return AdScaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: const Text(
-          '企業管理',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: '表示設定（並び替え・絞り込み）',
-            icon: const Icon(Icons.tune),
-            onPressed: () => _openSortFilterSheet(box),
-          ),
-        ],
-      ),
-      body: ValueListenableBuilder(
-        valueListenable: box.listenable(),
-        builder: (context, Box<Company> b, _) {
-          final all = b.values.toList();
-          final list = _filtered(all)..sort(_compare);
+      appBar: _buildAppBar(box),
+      body: Container(
+        color: const Color(0xFFF7F8FA),
+        child: ValueListenableBuilder(
+          valueListenable: box.listenable(),
+          builder: (context, Box<Company> b, _) {
+            final all = b.values.toList();
+            final list = _filtered(all)..sort(_compare);
 
-          if (list.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.business_outlined, size: 42),
-                    const SizedBox(height: 10),
-                    Text(
-                      '企業がありません',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+            if (list.isEmpty) {
+              final isSearch = _searchCtrl.text.trim().isNotEmpty;
+
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isSearch ? Icons.search_off_rounded : Icons.business_outlined,
+                        size: 42,
+                        color: Colors.black.withOpacity(0.55),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '右下の＋から企業を追加してください。',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.color
-                            ?.withOpacity(0.75),
+                      const SizedBox(height: 10),
+                      Text(
+                        isSearch ? '検索結果がありません' : '企業がありません',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    // const SizedBox(height: 14),
-                    // FilledButton.icon(
-                    //   onPressed: () async {
-                    //     await Navigator.push(
-                    //       context,
-                    //       MaterialPageRoute(
-                    //         builder: (_) => const CompanyFormPage(),
-                    //       ),
-                    //     );
-                    //   },
-                    //   icon: const Icon(Icons.add),
-                    //   label: const Text('企業を追加'),
-                    // ),
-                  ],
+                      const SizedBox(height: 6),
+                      Text(
+                        isSearch ? '検索条件を変えてください。' : '右下の＋から企業を追加してください。',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.black.withOpacity(0.55),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          }
+              );
+            }
 
-          if (_sortMode == CompanySortMode.updatedAt) {
-            return _buildFlatList(list);
-          }
-          return _buildSectionedList(list);
-        },
+            if (_sortMode == CompanySortMode.updatedAt) {
+              return _buildFlatList(list);
+            }
+            return _buildSectionedList(list);
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton(
+        elevation: 1,
         onPressed: () async {
           await Navigator.push(
             context,
@@ -521,11 +681,114 @@ class _CompanyPageState extends State<CompanyPage> {
 
   Widget _sectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w800,
+          color: Colors.black.withOpacity(0.72),
+        ),
+      ),
+    );
+  }
+
+  Widget _modernTag({
+    required String text,
+    required Color fg,
+    required Color bg,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          height: 1,
+          fontWeight: FontWeight.w800,
+          color: fg,
+        ),
+      ),
+    );
+  }
+
+  Widget _primaryActionButton({
+    required String label,
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback? onTap,
+  }) {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      height: 38,
+      decoration: BoxDecoration(
+        color: enabled ? primary.withOpacity(0.10) : const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 17,
+                color: enabled ? primary : Colors.grey,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: enabled ? primary : Colors.grey,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _miniActionButton({
+    required IconData icon,
+    required String tooltip,
+    required bool enabled,
+    required VoidCallback? onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: enabled ? const Color(0xFFF5F7FA) : const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: onTap,
+            child: Icon(
+              icon,
+              size: 18,
+              color: enabled ? const Color(0xFF4B5563) : Colors.grey.shade400,
+            ),
+          ),
         ),
       ),
     );
@@ -535,129 +798,148 @@ class _CompanyPageState extends State<CompanyPage> {
     final industryStr =
     (c.industry == null || c.industry!.trim().isEmpty) ? '業界未設定' : c.industry!.trim();
     final phaseStr = _phaseLabel(c.phase);
-    final desireStr = _desireLabel((c as dynamic).desireLevel);
+    final desireStr = _desireLabel(c.desireLevel);
+
+    final mypageUrl = (c.mypageUrl ?? '').trim();
+    final mypageId = (c.mypageid ?? '').trim();
+    final mypagePassword = (c.mypagePassword ?? '').trim();
 
     Color desireColor() {
-      switch (desireStr) {
-        case '高':
-          return Colors.red;
-        case '中':
-          return Colors.orange;
-        case '低':
-          return Colors.blueGrey;
-        default:
-          return Colors.grey;
+      switch (c.desireLevel) {
+        case DesireLevel.high:
+          return const Color(0xFFFF6B6B);
+        case DesireLevel.mid:
+          return const Color(0xFFFFB84D);
+        case DesireLevel.low:
+          return const Color(0xFF7A8CA5);
+        case null:
+          return const Color(0xFF9AA3AF);
       }
     }
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () async {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => CompanyFormPage(editing: c)),
-        );
-      },
-      onLongPress: () => _deleteCompany(c),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Theme.of(context).dividerColor.withOpacity(0.35),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    c.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: desireColor().withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '志望度 $desireStr',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: desireColor(),
-                    ),
-                  ),
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => CompanyFormPage(editing: c)),
+            );
+          },
+          onLongPress: () => _deleteCompany(c),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.black.withOpacity(0.2),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              industryStr,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.color
-                    ?.withOpacity(0.75),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  /// 上段
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              c.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              industryStr,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black.withOpacity(0.55),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _modernTag(
+                        text: '志望度 $desireStr',
+                        fg: desireColor(),
+                        bg: desireColor().withOpacity(0.12),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  /// 下段
+                  Row(
+                    children: [
+                      _modernTag(
+                        text: phaseStr,
+                        fg: primaryColor,
+                        bg: primaryColor.withOpacity(0.10),
+                      ),
+                      const Spacer(),
+
+                      SizedBox(
+                        width: 110, // ← ここで幅を固定
+                        child: _primaryActionButton(
+                          label: 'マイページ',
+                          icon: Icons.open_in_new_rounded,
+                          enabled: mypageUrl.isNotEmpty,
+                          onTap: mypageUrl.isEmpty ? null : () => _openMyPage(mypageUrl),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+
+                      _miniActionButton(
+                        icon: Icons.badge_outlined,
+                        tooltip: 'IDコピー',
+                        enabled: mypageId.isNotEmpty,
+                        onTap: mypageId.isEmpty ? null : () => _copyText(mypageId, 'ID'),
+                      ),
+                      const SizedBox(width: 6),
+
+                      _miniActionButton(
+                        icon: Icons.key_rounded,
+                        tooltip: 'PWコピー',
+                        enabled: mypagePassword.isNotEmpty,
+                        onTap: mypagePassword.isEmpty
+                            ? null
+                            : () => _copyText(mypagePassword, 'パスワード'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    phaseStr,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '更新: ${c.updatedAt.toLocal().toString().substring(0, 10)}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.color
-                        ?.withOpacity(0.65),
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -666,7 +948,8 @@ class _CompanyPageState extends State<CompanyPage> {
 
 class _SortFilterResult {
   final CompanySortMode sortMode;
-  final String? industry; // null=全業界
+  final String? industry;
+
   const _SortFilterResult({
     required this.sortMode,
     required this.industry,
