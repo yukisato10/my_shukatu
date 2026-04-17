@@ -28,7 +28,6 @@ import '../models/company.dart';
 // Calendar models
 // =====================
 enum EventType { deadline, interview, test, gd, event, other }
-enum _StoreReviewDialogAction { review, later }
 
 class CalendarEvent {
   final EventType type;
@@ -72,11 +71,8 @@ class _HomePageState extends State<HomePage> {
   static const _kCompanyFilterKeys = 'calendarCompanyFilterKeys';
   static const _kScheduleTypeFilterKeys = 'calendarScheduleTypeFilterKeys';
 
-  static const _kReviewPromptNeverShowKey = 'reviewPromptNeverShowMyShukatu';
-  static const _kReviewPromptInitialShownKey = 'reviewPromptInitialShownMyShukatu';
-  static const _kReviewPromptNextCompanyCountKey = 'reviewPromptNextCompanyCountMyShukatu';
-  static const _kReviewPromptNextScheduleCountKey = 'reviewPromptNextScheduleCountMyShukatu';
-  static const _kAppStoreId = '6760533552';
+  static const _kReviewPromptNextScheduleCountKey =
+      'reviewPromptNextScheduleCountMyShukatu';
 
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -354,74 +350,45 @@ class _HomePageState extends State<HomePage> {
     return total;
   }
 
-  Future<void> _tryShowStoreReviewPrompt({
-    required bool triggeredByCompanyCreate,
-    required bool triggeredByScheduleAdd,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final neverShow = prefs.getBool(_kReviewPromptNeverShowKey) ?? false;
-    if (neverShow) return;
+  int _currentGlobalEsCount() {
+    final box = HiveService.companyBox();
+    var total = 0;
 
-    final initialShown = prefs.getBool(_kReviewPromptInitialShownKey) ?? false;
-    if (!initialShown) return;
-    if (!triggeredByCompanyCreate && !triggeredByScheduleAdd) return;
+    for (final company in box.values) {
+      total += company.esQasSummer.length;
+      total += company.esQasWinter.length;
+      total += company.esQasEarly.length;
+      total += company.esQasMain.length;
+    }
+    return total;
+  }
+
+  Future<void> _tryShowStoreReviewPrompt() async {
+    final prefs = await SharedPreferences.getInstance();
 
     final companyCount = _currentGlobalCompanyCount();
     final scheduleCount = _currentGlobalScheduleCount();
+    final esCount = _currentGlobalEsCount();
 
-    final nextCompanyTrigger =
-        prefs.getInt(_kReviewPromptNextCompanyCountKey) ?? 8;
+    final baseConditionMet =
+        companyCount >= 3 &&
+            scheduleCount >= 3 &&
+            esCount >= 1;
+    if (!baseConditionMet) return;
+
     final nextScheduleTrigger =
         prefs.getInt(_kReviewPromptNextScheduleCountKey) ?? 3;
+    if (scheduleCount < nextScheduleTrigger) return;
 
-    final reachedCompanyTrigger =
-        triggeredByCompanyCreate && companyCount >= nextCompanyTrigger;
-    final reachedScheduleTrigger =
-        triggeredByScheduleAdd && scheduleCount >= nextScheduleTrigger;
+    final inAppReview = InAppReview.instance;
+    final isAvailable = await inAppReview.isAvailable();
+    if (!isAvailable) return;
 
-    if (!reachedCompanyTrigger && !reachedScheduleTrigger) return;
+    await inAppReview.requestReview();
 
-    final action = await _showStoreReviewDialog();
-    if (action == null) return;
-
-    if (action == _StoreReviewDialogAction.review) {
-      await prefs.setBool(_kReviewPromptNeverShowKey, true);
-      final inAppReview = InAppReview.instance;
-      await inAppReview.openStoreListing(appStoreId: _kAppStoreId);
-    } else {
-      await prefs.setInt(_kReviewPromptNextCompanyCountKey, companyCount + 3);
-      await prefs.setInt(_kReviewPromptNextScheduleCountKey, scheduleCount + 3);
-    }
-  }
-
-  Future<_StoreReviewDialogAction?> _showStoreReviewDialog() async {
-    if (!mounted) return null;
-
-    return showCupertinoDialog<_StoreReviewDialogAction>(
-      context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('My就活の評価のお願い'),
-        content: const Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: Text(
-              'いつもご利用いただきありがとうございます。'
-                  'My就活の評価にご協力いただけますと幸いです。\n'
-                  'アプリ改善の参考にさせていただきます。',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, height: 1.45),
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(ctx, _StoreReviewDialogAction.review),
-            child: const Text('評価する'),
-          ),
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(ctx, _StoreReviewDialogAction.later),
-            child: const Text('あとでする'),
-          ),
-        ],
-      ),
+    await prefs.setInt(
+      _kReviewPromptNextScheduleCountKey,
+      scheduleCount + 5,
     );
   }
 
@@ -743,10 +710,7 @@ class _HomePageState extends State<HomePage> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('予定を追加しました')),
                         );
-                        await _tryShowStoreReviewPrompt(
-                          triggeredByCompanyCreate: false,
-                          triggeredByScheduleAdd: true,
-                        );
+                        await _tryShowStoreReviewPrompt();
                       }
                     },
                     onTapEvent: (e) async {

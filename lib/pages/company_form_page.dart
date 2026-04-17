@@ -25,7 +25,6 @@ import '../models/company.dart';
 enum _EventType { deadline, interview, test, gd, event, other }
 
 enum EsCategory { summer, winter, early, main }
-enum _StoreReviewDialogAction { review, later }
 
 class CompanyFormPage extends StatefulWidget {
   final Company? editing;
@@ -93,11 +92,8 @@ class _CompanyFormPageState extends State<CompanyFormPage>
   static const _kGdColorKey = 'gdColor';
   static const _kEventColorKey = 'eventColor';
   static const _kOtherColorKey = 'otherColor';
-  static const _kReviewPromptNeverShowKey = 'reviewPromptNeverShowMyShukatu';
-  static const _kReviewPromptInitialShownKey = 'reviewPromptInitialShownMyShukatu';
-  static const _kReviewPromptNextCompanyCountKey = 'reviewPromptNextCompanyCountMyShukatu';
-  static const _kReviewPromptNextScheduleCountKey = 'reviewPromptNextScheduleCountMyShukatu';
-  static const _kAppStoreId = '6760533552';
+  static const _kReviewPromptNextScheduleCountKey =
+      'reviewPromptNextScheduleCountMyShukatu';
 
   int _deadlineColorValue = Colors.red.value;
   int _interviewColorValue = Colors.blue.value;
@@ -166,7 +162,7 @@ class _CompanyFormPageState extends State<CompanyFormPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _topTabCtrl = TabController(length: 3, vsync: this);
+    _topTabCtrl = TabController(length: 4, vsync: this);
 
     final e = widget.editing;
     if (e != null) {
@@ -227,6 +223,9 @@ class _CompanyFormPageState extends State<CompanyFormPage>
 
     super.dispose();
   }
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -250,7 +249,13 @@ class _CompanyFormPageState extends State<CompanyFormPage>
   }
 
   int _currentGlobalCompanyCount() {
-    return HiveService.companyBox().length;
+    final box = HiveService.companyBox();
+    final currentEditingKey = widget.editing?.key;
+
+    if (currentEditingKey == null) {
+      return box.length + 1;
+    }
+    return box.length;
   }
 
   int _currentGlobalScheduleCount() {
@@ -275,92 +280,62 @@ class _CompanyFormPageState extends State<CompanyFormPage>
     return total;
   }
 
-  Future<void> _tryShowStoreReviewPrompt({
-    required bool triggeredByCompanyCreate,
-    required bool triggeredByScheduleAdd,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final neverShow = prefs.getBool(_kReviewPromptNeverShowKey) ?? false;
-    if (neverShow) return;
+  int _currentGlobalEsCount() {
+    final box = HiveService.companyBox();
+    final currentEditingKey = widget.editing?.key;
+    var total = 0;
 
-    final initialShown = prefs.getBool(_kReviewPromptInitialShownKey) ?? false;
-    final companyCount = _currentGlobalCompanyCount();
-    final scheduleCount = _currentGlobalScheduleCount();
+    int localEsCount() {
+      return _esSummer.length + _esWinter.length + _esEarly.length + _esMain.length;
+    }
 
-    if (!initialShown) {
-      if (!triggeredByCompanyCreate || companyCount < 5) return;
+    for (final entry in box.toMap().entries) {
+      final key = entry.key;
+      final company = entry.value;
 
-      final action = await _showStoreReviewDialog();
-      if (action == null) return;
-
-      await prefs.setBool(_kReviewPromptInitialShownKey, true);
-
-      if (action == _StoreReviewDialogAction.review) {
-        await prefs.setBool(_kReviewPromptNeverShowKey, true);
-        final inAppReview = InAppReview.instance;
-        await inAppReview.openStoreListing(appStoreId: _kAppStoreId);
+      if (key == currentEditingKey) {
+        total += localEsCount();
       } else {
-        await prefs.setInt(_kReviewPromptNextCompanyCountKey, companyCount + 3);
-        await prefs.setInt(_kReviewPromptNextScheduleCountKey, scheduleCount + 3);
+        total += company.esQasSummer.length;
+        total += company.esQasWinter.length;
+        total += company.esQasEarly.length;
+        total += company.esQasMain.length;
       }
-      return;
     }
 
-    if (!triggeredByCompanyCreate && !triggeredByScheduleAdd) return;
-
-    final nextCompanyTrigger =
-        prefs.getInt(_kReviewPromptNextCompanyCountKey) ?? 8;
-    final nextScheduleTrigger =
-        prefs.getInt(_kReviewPromptNextScheduleCountKey) ?? 3;
-
-    final reachedCompanyTrigger =
-        triggeredByCompanyCreate && companyCount >= nextCompanyTrigger;
-    final reachedScheduleTrigger =
-        triggeredByScheduleAdd && scheduleCount >= nextScheduleTrigger;
-
-    if (!reachedCompanyTrigger && !reachedScheduleTrigger) return;
-
-    final action = await _showStoreReviewDialog();
-    if (action == null) return;
-
-    if (action == _StoreReviewDialogAction.review) {
-      await prefs.setBool(_kReviewPromptNeverShowKey, true);
-      final inAppReview = InAppReview.instance;
-      await inAppReview.openStoreListing(appStoreId: _kAppStoreId);
-    } else {
-      await prefs.setInt(_kReviewPromptNextCompanyCountKey, companyCount + 3);
-      await prefs.setInt(_kReviewPromptNextScheduleCountKey, scheduleCount + 3);
+    if (currentEditingKey == null) {
+      total += localEsCount();
     }
+
+    return total;
   }
 
-  Future<_StoreReviewDialogAction?> _showStoreReviewDialog() async {
-    if (!mounted) return null;
+  Future<void> _tryShowStoreReviewPrompt() async {
+    final prefs = await SharedPreferences.getInstance();
 
-    return showCupertinoDialog<_StoreReviewDialogAction>(
-      context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('My就活の評価のお願い'),
-        content: const Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: Text(
-            'いつもご利用いただきありがとうございます。'
-                'My就活の評価にご協力いただけますと幸いです。\n'
-                'アプリ改善の参考にさせていただきます。',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, height: 1.45),
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(ctx, _StoreReviewDialogAction.review),
-            child: const Text('評価する'),
-          ),
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(ctx, _StoreReviewDialogAction.later),
-            child: const Text('あとでする'),
-          ),
-        ],
-      ),
+    final companyCount = _currentGlobalCompanyCount();
+    final scheduleCount = _currentGlobalScheduleCount();
+    final esCount = _currentGlobalEsCount();
+
+    final baseConditionMet =
+        companyCount >= 3 &&
+            scheduleCount >= 3 &&
+            esCount >= 1;
+    if (!baseConditionMet) return;
+
+    final nextScheduleTrigger =
+        prefs.getInt(_kReviewPromptNextScheduleCountKey) ?? 3;
+    if (scheduleCount < nextScheduleTrigger) return;
+
+    final inAppReview = InAppReview.instance;
+    final isAvailable = await inAppReview.isAvailable();
+    if (!isAvailable) return;
+
+    await inAppReview.requestReview();
+
+    await prefs.setInt(
+      _kReviewPromptNextScheduleCountKey,
+      scheduleCount + 5,
     );
   }
 
@@ -570,9 +545,15 @@ class _CompanyFormPageState extends State<CompanyFormPage>
       textInputAction:
       nextFocus == null ? TextInputAction.done : TextInputAction.next,
       style: const TextStyle(fontSize: 13),
-      onSubmitted: (_) => nextFocus?.requestFocus(),
+      onTapOutside: (_) => _dismissKeyboard(),
+      onSubmitted: (_) {
+        if (nextFocus != null) {
+          nextFocus.requestFocus();
+        } else {
+          _dismissKeyboard();
+        }
+      },
       decoration: InputDecoration(
-        /// ★ここが変更ポイント
         label: RichText(
           text: TextSpan(
             style: const TextStyle(
@@ -592,12 +573,10 @@ class _CompanyFormPageState extends State<CompanyFormPage>
             ],
           ),
         ),
-
         border: const OutlineInputBorder(),
         isDense: true,
         contentPadding:
         const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-
         suffixIconConstraints: const BoxConstraints(
           minWidth: 0,
           minHeight: 0,
@@ -779,10 +758,7 @@ class _CompanyFormPageState extends State<CompanyFormPage>
       );
 
       await box.add(c);
-      await _tryShowStoreReviewPrompt(
-        triggeredByCompanyCreate: true,
-        triggeredByScheduleAdd: false,
-      );
+      await _tryShowStoreReviewPrompt();
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -906,7 +882,11 @@ class _CompanyFormPageState extends State<CompanyFormPage>
     setState(() {
       _applyEsBulkResult(res);
     });
-    if (_isEdit) _autoSaveDebounced();
+    if (_isEdit) {
+      await _saveEdit(auto: true);
+    }
+
+    await _tryShowStoreReviewPrompt();
   }
 
   void _applyEsBulkResult(_EsBulkResult res) {
@@ -1022,10 +1002,7 @@ class _CompanyFormPageState extends State<CompanyFormPage>
     if (_isEdit) {
       await _saveEdit(auto: true);
     }
-    await _tryShowStoreReviewPrompt(
-      triggeredByCompanyCreate: false,
-      triggeredByScheduleAdd: true,
-    );
+    await _tryShowStoreReviewPrompt();
   }
 
   Future<void> _editSchedule(ScheduleItem item) async {
@@ -1041,7 +1018,11 @@ class _CompanyFormPageState extends State<CompanyFormPage>
       _schedules.sort((a, b) => a.dateTime.compareTo(b.dateTime));
     });
 
-    if (_isEdit) _autoSaveDebounced();
+    if (_isEdit) {
+      await _saveEdit(auto: true);
+    }
+
+    await _tryShowStoreReviewPrompt();
   }
 
   Future<void> _deleteSchedule(ScheduleItem item) async {
@@ -1069,90 +1050,106 @@ class _CompanyFormPageState extends State<CompanyFormPage>
       _schedules.remove(item);
     });
 
-    if (_isEdit) _autoSaveDebounced();
+    if (_isEdit) {
+      await _saveEdit(auto: true);
+    }
+
+    await _tryShowStoreReviewPrompt();
   }
 
   Widget _buildCreateForm() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _smallTextField(
-          controller: _nameCtrl,
-          focusNode: _nameFocus,
-          nextFocus: _urlFocus,
-          label: '企業名',
-          required: true,
-        ),
-        const SizedBox(height: 12),
-        _smallTextField(
-          controller: _mypageUrlCtrl,
-          focusNode: _urlFocus,
-          nextFocus: _idFocus,
-          label: 'マイページURL',
-          keyboardType: TextInputType.url,
-        ),
-        const SizedBox(height: 12),
-        _smallTextField(
-          controller: _mypageidCtrl,
-          focusNode: _idFocus,
-          nextFocus: _passFocus,
-          label: 'マイページID',
-        ),
-        const SizedBox(height: 12),
-        _smallTextField(
-          controller: _passwordCtrl,
-          focusNode: _passFocus,
-          label: 'パスワード',
-          obscureText: true,
-        ),
-        const SizedBox(height: 12),
-        _pickerRow(
-          label: '業界',
-          valueText: (_industry == null || _industry!.trim().isEmpty)
-              ? '未選択'
-              : _industry!,
-          onTap: () async {
-            final picked = await _openPickerSheet<String>(
-              title: '業界を選択',
-              currentValue: _industry,
-              labelOf: (v) => (v == null || v.trim().isEmpty) ? '未選択' : v,
-              options: [
-                const _PickerOption<String>(value: null, label: '未選択'),
-                ..._industryOptions.map((s) => _PickerOption<String>(value: s, label: s)),
-              ],
-            );
-            if (!mounted) return;
-            setState(() => _industry = picked);
-          },
-        ),
-        const SizedBox(height: 12),
-        _pickerRow(
-          label: '志望度',
-          valueText: _desire == null ? '未選択' : (_desireLabel[_desire!] ?? _desire!.name),
-          onTap: () async {
-            final picked = await _openPickerSheet<DesireLevel>(
-              title: '志望度を選択',
-              currentValue: _desire,
-              labelOf: (v) => v == null ? '未選択' : (_desireLabel[v] ?? v.name),
-              options: [
-                const _PickerOption<DesireLevel>(value: null, label: '未選択'),
-                ...DesireLevel.values.map(
-                      (d) => _PickerOption(value: d, label: _desireLabel[d] ?? d.name),
-                ),
-              ],
-            );
-            if (!mounted) return;
-            setState(() => _desire = picked);
-          },
-        ),
-        const SizedBox(height: 24),
-        if (_saving) const LinearProgressIndicator(),
-        const SizedBox(height: 8),
-        FilledButton(
-          onPressed: _saving ? null : _saveCreate,
-          child: const Text('保存して登録'),
-        ),
-      ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _dismissKeyboard,
+      child: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.all(16),
+        children: [
+          _smallTextField(
+            controller: _nameCtrl,
+            focusNode: _nameFocus,
+            nextFocus: _urlFocus,
+            label: '企業名',
+            required: true,
+          ),
+          const SizedBox(height: 12),
+          _smallTextField(
+            controller: _mypageUrlCtrl,
+            focusNode: _urlFocus,
+            nextFocus: _idFocus,
+            label: 'マイページURL',
+            keyboardType: TextInputType.url,
+          ),
+          const SizedBox(height: 12),
+          _smallTextField(
+            controller: _mypageidCtrl,
+            focusNode: _idFocus,
+            nextFocus: _passFocus,
+            label: 'マイページID',
+          ),
+          const SizedBox(height: 12),
+          _smallTextField(
+            controller: _passwordCtrl,
+            focusNode: _passFocus,
+            label: 'パスワード',
+            obscureText: true,
+          ),
+          const SizedBox(height: 12),
+          _pickerRow(
+            label: '業界',
+            valueText: (_industry == null || _industry!.trim().isEmpty)
+                ? '未選択'
+                : _industry!,
+            onTap: () async {
+              _dismissKeyboard();
+              final picked = await _openPickerSheet<String>(
+                title: '業界を選択',
+                currentValue: _industry,
+                labelOf: (v) => (v == null || v.trim().isEmpty) ? '未選択' : v,
+                options: [
+                  const _PickerOption<String>(value: null, label: '未選択'),
+                  ..._industryOptions.map((s) => _PickerOption<String>(value: s, label: s)),
+                ],
+              );
+              if (!mounted) return;
+              setState(() => _industry = picked);
+            },
+          ),
+          const SizedBox(height: 12),
+          _pickerRow(
+            label: '志望度',
+            valueText: _desire == null ? '未選択' : (_desireLabel[_desire!] ?? _desire!.name),
+            onTap: () async {
+              _dismissKeyboard();
+              final picked = await _openPickerSheet<DesireLevel>(
+                title: '志望度を選択',
+                currentValue: _desire,
+                labelOf: (v) => v == null ? '未選択' : (_desireLabel[v] ?? v.name),
+                options: [
+                  const _PickerOption<DesireLevel>(value: null, label: '未選択'),
+                  ...DesireLevel.values.map(
+                        (d) => _PickerOption(value: d, label: _desireLabel[d] ?? d.name),
+                  ),
+                ],
+              );
+              if (!mounted) return;
+              setState(() => _desire = picked);
+            },
+          ),
+          const SizedBox(height: 24),
+          if (_saving) const LinearProgressIndicator(),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: _saving
+                ? null
+                : () {
+              _dismissKeyboard();
+              _saveCreate();
+            },
+            child: const Text('保存して登録'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1161,167 +1158,198 @@ class _CompanyFormPageState extends State<CompanyFormPage>
     final hasId = _mypageidCtrl.text.trim().isNotEmpty;
     final hasPassword = _passwordCtrl.text.trim().isNotEmpty;
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _smallTextField(
-          controller: _nameCtrl,
-          focusNode: _nameFocus,
-          nextFocus: _urlFocus,
-          label: '会社名',
-        ),
-        const SizedBox(height: 12),
-        _smallTextField(
-          controller: _mypageUrlCtrl,
-          focusNode: _urlFocus,
-          nextFocus: _idFocus,
-          label: 'マイページURL',
-          keyboardType: TextInputType.url,
-          suffixActions: [
-            _suffixActionIcon(
-              tooltip: '開く',
-              icon: Icons.open_in_new,
-              onPressed: hasUrl ? () => _openUrlIfPossible(_mypageUrlCtrl.text) : null,
-            ),
-            _suffixActionIcon(
-              tooltip: 'コピー',
-              icon: Icons.copy,
-              onPressed: hasUrl ? () => _copyToClipboard(_mypageUrlCtrl.text, 'URL') : null,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _smallTextField(
-          controller: _mypageidCtrl,
-          focusNode: _idFocus,
-          nextFocus: _passFocus,
-          label: 'マイページID',
-          suffixActions: [
-            _suffixActionIcon(
-              tooltip: 'コピー',
-              icon: Icons.copy,
-              onPressed: hasId ? () => _copyToClipboard(_mypageidCtrl.text, 'ID') : null,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _smallTextField(
-          controller: _passwordCtrl,
-          focusNode: _passFocus,
-          label: 'パスワード',
-          obscureText: true,
-          suffixActions: [
-            _suffixActionIcon(
-              tooltip: 'コピー',
-              icon: Icons.copy,
-              onPressed: hasPassword
-                  ? () => _copyToClipboard(_passwordCtrl.text, 'パスワード')
-                  : null,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _pickerRow(
-          label: '業界',
-          valueText: (_industry == null || _industry!.trim().isEmpty)
-              ? '未選択'
-              : _industry!,
-          onTap: () async {
-            final picked = await _openPickerSheet<String>(
-              title: '業界を選択',
-              currentValue: _industry,
-              labelOf: (v) => (v == null || v.trim().isEmpty) ? '未選択' : v,
-              options: [
-                const _PickerOption<String>(value: null, label: '未選択'),
-                ..._industryOptions.map((s) => _PickerOption<String>(value: s, label: s)),
-              ],
-            );
-            if (!mounted) return;
-            setState(() {
-              _industry = picked;
-              _autoSaveDebounced();
-            });
-          },
-        ),
-        const SizedBox(height: 12),
-        _pickerRow(
-          label: '志望度',
-          valueText: _desire == null ? '未選択' : (_desireLabel[_desire!] ?? _desire!.name),
-          onTap: () async {
-            final picked = await _openPickerSheet<DesireLevel>(
-              title: '志望度を選択',
-              currentValue: _desire,
-              labelOf: (v) => v == null ? '未選択' : (_desireLabel[v] ?? v.name),
-              options: [
-                const _PickerOption<DesireLevel>(value: null, label: '未選択'),
-                ...DesireLevel.values.map(
-                      (d) => _PickerOption(value: d, label: _desireLabel[d] ?? d.name),
-                ),
-              ],
-            );
-            if (!mounted) return;
-            setState(() {
-              _desire = picked;
-              _autoSaveDebounced();
-            });
-          },
-        ),
-        const SizedBox(height: 12),
-        _pickerRow(
-          label: '選考区分',
-          valueText: _trackLabel[_track] ?? '未選択',
-          onTap: () async {
-            final picked = await _openPickerSheet<SelectionTrack>(
-              title: '選考区分を選択',
-              currentValue: _track,
-              labelOf: (v) => v == null ? '未選択' : (_trackLabel[v] ?? v.name),
-              options: SelectionTrack.values
-                  .map((t) => _PickerOption(value: t, label: _trackLabel[t] ?? t.name))
-                  .toList(),
-            );
-            if (!mounted) return;
-            setState(() {
-              if (picked != null) _track = picked;
-              _autoSaveDebounced();
-            });
-          },
-        ),
-        const SizedBox(height: 12),
-        _pickerRow(
-          label: 'フェーズ',
-          valueText: _phaseLabel[_phase] ?? '未選択',
-          onTap: () async {
-            final picked = await _openPickerSheet<SelectionPhase>(
-              title: 'フェーズを選択',
-              currentValue: _phase,
-              labelOf: (v) => v == null ? '未選択' : (_phaseLabel[v] ?? v.name),
-              options: SelectionPhase.values
-                  .map((p) => _PickerOption(value: p, label: _phaseLabel[p] ?? p.name))
-                  .toList(),
-            );
-            if (!mounted) return;
-            setState(() {
-              if (picked != null) _phase = picked;
-              _autoSaveDebounced();
-            });
-          },
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _noteCtrl,
-          maxLines: 5,
-          style: const TextStyle(fontSize: 13),
-          decoration: const InputDecoration(
-            labelText: 'メモ',
-            border: OutlineInputBorder(),
-            isDense: true,
-            labelStyle: TextStyle(fontSize: 12),
-            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _dismissKeyboard,
+      child: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.all(16),
+        children: [
+          _smallTextField(
+            controller: _nameCtrl,
+            focusNode: _nameFocus,
+            nextFocus: _urlFocus,
+            label: '会社名',
           ),
-        ),
-        const SizedBox(height: 12),
-        if (_saving) const LinearProgressIndicator(),
-      ],
+          const SizedBox(height: 12),
+          _smallTextField(
+            controller: _mypageUrlCtrl,
+            focusNode: _urlFocus,
+            nextFocus: _idFocus,
+            label: 'マイページURL',
+            keyboardType: TextInputType.url,
+            suffixActions: [
+              _suffixActionIcon(
+                tooltip: '開く',
+                icon: Icons.open_in_new,
+                onPressed: hasUrl ? () => _openUrlIfPossible(_mypageUrlCtrl.text) : null,
+              ),
+              _suffixActionIcon(
+                tooltip: 'コピー',
+                icon: Icons.copy,
+                onPressed: hasUrl ? () => _copyToClipboard(_mypageUrlCtrl.text, 'URL') : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _smallTextField(
+            controller: _mypageidCtrl,
+            focusNode: _idFocus,
+            nextFocus: _passFocus,
+            label: 'マイページID',
+            suffixActions: [
+              _suffixActionIcon(
+                tooltip: 'コピー',
+                icon: Icons.copy,
+                onPressed: hasId ? () => _copyToClipboard(_mypageidCtrl.text, 'ID') : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _smallTextField(
+            controller: _passwordCtrl,
+            focusNode: _passFocus,
+            label: 'パスワード',
+            obscureText: true,
+            suffixActions: [
+              _suffixActionIcon(
+                tooltip: 'コピー',
+                icon: Icons.copy,
+                onPressed: hasPassword
+                    ? () => _copyToClipboard(_passwordCtrl.text, 'パスワード')
+                    : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _pickerRow(
+            label: '業界',
+            valueText: (_industry == null || _industry!.trim().isEmpty)
+                ? '未選択'
+                : _industry!,
+            onTap: () async {
+              _dismissKeyboard();
+              final picked = await _openPickerSheet<String>(
+                title: '業界を選択',
+                currentValue: _industry,
+                labelOf: (v) => (v == null || v.trim().isEmpty) ? '未選択' : v,
+                options: [
+                  const _PickerOption<String>(value: null, label: '未選択'),
+                  ..._industryOptions.map((s) => _PickerOption<String>(value: s, label: s)),
+                ],
+              );
+              if (!mounted) return;
+              setState(() {
+                _industry = picked;
+                _autoSaveDebounced();
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          _pickerRow(
+            label: '志望度',
+            valueText: _desire == null ? '未選択' : (_desireLabel[_desire!] ?? _desire!.name),
+            onTap: () async {
+              _dismissKeyboard();
+              final picked = await _openPickerSheet<DesireLevel>(
+                title: '志望度を選択',
+                currentValue: _desire,
+                labelOf: (v) => v == null ? '未選択' : (_desireLabel[v] ?? v.name),
+                options: [
+                  const _PickerOption<DesireLevel>(value: null, label: '未選択'),
+                  ...DesireLevel.values.map(
+                        (d) => _PickerOption(value: d, label: _desireLabel[d] ?? d.name),
+                  ),
+                ],
+              );
+              if (!mounted) return;
+              setState(() {
+                _desire = picked;
+                _autoSaveDebounced();
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          _pickerRow(
+            label: '選考区分',
+            valueText: _trackLabel[_track] ?? '未選択',
+            onTap: () async {
+              _dismissKeyboard();
+              final picked = await _openPickerSheet<SelectionTrack>(
+                title: '選考区分を選択',
+                currentValue: _track,
+                labelOf: (v) => v == null ? '未選択' : (_trackLabel[v] ?? v.name),
+                options: SelectionTrack.values
+                    .map((t) => _PickerOption(value: t, label: _trackLabel[t] ?? t.name))
+                    .toList(),
+              );
+              if (!mounted) return;
+              setState(() {
+                if (picked != null) _track = picked;
+                _autoSaveDebounced();
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          _pickerRow(
+            label: 'フェーズ',
+            valueText: _phaseLabel[_phase] ?? '未選択',
+            onTap: () async {
+              _dismissKeyboard();
+              final picked = await _openPickerSheet<SelectionPhase>(
+                title: 'フェーズを選択',
+                currentValue: _phase,
+                labelOf: (v) => v == null ? '未選択' : (_phaseLabel[v] ?? v.name),
+                options: SelectionPhase.values
+                    .map((p) => _PickerOption(value: p, label: _phaseLabel[p] ?? p.name))
+                    .toList(),
+              );
+              if (!mounted) return;
+              setState(() {
+                if (picked != null) _phase = picked;
+                _autoSaveDebounced();
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          if (_saving) const LinearProgressIndicator(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompanyMemoTab() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _dismissKeyboard,
+      child: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            '企業メモ',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _noteCtrl,
+            maxLines: null,
+            minLines: 14,
+            onTapOutside: (_) => _dismissKeyboard(),
+            style: const TextStyle(fontSize: 13, height: 1.45),
+            decoration: const InputDecoration(
+              hintText: 'この企業について自由にメモできます',
+              border: OutlineInputBorder(),
+              alignLabelWithHint: true,
+              isDense: true,
+              labelStyle: TextStyle(fontSize: 12),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_saving) const LinearProgressIndicator(),
+        ],
+      ),
     );
   }
 
@@ -1375,7 +1403,11 @@ class _CompanyFormPageState extends State<CompanyFormPage>
                   setState(() {
                     _applyEsBulkResultReplaceAll(fromCategory: cat, res: res);
                   });
-                  if (_isEdit) _autoSaveDebounced();
+                  if (_isEdit) {
+                    await _saveEdit(auto: true);
+                  }
+
+                  await _tryShowStoreReviewPrompt();
                 },
                 onDeleteCategory: () async {
                   final ok = await showDialog<bool>(
@@ -1399,7 +1431,11 @@ class _CompanyFormPageState extends State<CompanyFormPage>
                   if (ok != true) return;
 
                   setState(() => list.clear());
-                  if (_isEdit) _autoSaveDebounced();
+                  if (_isEdit) {
+                    await _saveEdit(auto: true);
+                  }
+
+                  await _tryShowStoreReviewPrompt();
                 },
               ),
             );
@@ -1712,6 +1748,7 @@ class _CompanyFormPageState extends State<CompanyFormPage>
             Tab(text: '企業情報'),
             Tab(text: 'ES'),
             Tab(text: '予定'),
+            Tab(text: '企業メモ'),
           ],
         ),
       ),
@@ -1723,6 +1760,7 @@ class _CompanyFormPageState extends State<CompanyFormPage>
           _buildCompanyInfoTab(),
           _buildEsTab(),
           _buildScheduleTab(),
+          _buildCompanyMemoTab(),
         ],
       ),
     );
@@ -1930,10 +1968,16 @@ class _EsBulkEditorSheet extends StatefulWidget {
   State<_EsBulkEditorSheet> createState() => _EsBulkEditorSheetState();
 }
 
+
+
 class _EsBulkEditorSheetState extends State<_EsBulkEditorSheet> {
   late EsCategory _category;
   late List<_QaRow> _rows;
   bool _dirty = false;
+
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
 
   @override
   void initState() {
@@ -1961,6 +2005,7 @@ class _EsBulkEditorSheetState extends State<_EsBulkEditorSheet> {
   }
 
   Future<bool> _confirmDiscard() async {
+    _dismissKeyboard();
     if (!_dirty) return true;
     final res = await showDialog<bool>(
       context: context,
@@ -2012,117 +2057,134 @@ class _EsBulkEditorSheetState extends State<_EsBulkEditorSheet> {
           minChildSize: 0.60,
           maxChildSize: 0.98,
           builder: (ctx, controller) {
-            return Material(
-              child: Column(
-                children: [
-                  const SizedBox(height: 10),
-                  Container(
-                    width: 44,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.black26,
-                      borderRadius: BorderRadius.circular(999),
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _dismissKeyboard,
+              child: Material(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Row(
-                      children: [
-                        TextButton(
-                          onPressed: () async {
-                            final ok = await _confirmDiscard();
-                            if (!ok) return;
-                            if (!mounted) return;
-                            Navigator.pop(context, null);
-                          },
-                          child: const Text('閉じる'),
-                        ),
-                        const Spacer(),
-                        Text(
-                          isEdit ? 'ESを編集' : 'ESを追加',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w900),
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () async {
-                            final items = _rows
-                                .map((r) => EsQa(
-                              question: r.qCtrl.text,
-                              answer: r.aCtrl.text,
-                            ))
-                                .toList();
-
-                            await InterstitialAdManager.showIfAllowed();
-
-                            if (!mounted) return;
-                            Navigator.pop(
-                              context,
-                              _EsBulkResult(
-                                category: _category,
-                                items: items,
-                                fromCategoryWhenEditingOne:
-                                widget.fromCategoryWhenEditingOne,
-                                editingIndexInFromCategory:
-                                widget.editingIndexInFromCategory,
-                              ),
-                            );
-                          },
-                          child: const Text('保存'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      controller: controller,
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      children: [
-                        InkWell(
-                          onTap: () async {
-                            final picked = await widget.openCategoryPicker();
-                            if (picked == null || !mounted) return;
-                            setState(() {
-                              _category = picked;
-                              _dirty = true;
-                            });
-                          },
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: 'カテゴリ',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(child: Text(catText)),
-                                const Icon(Icons.unfold_more),
-                              ],
-                            ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          TextButton(
+                            onPressed: () async {
+                              _dismissKeyboard();
+                              final ok = await _confirmDiscard();
+                              if (!ok) return;
+                              if (!mounted) return;
+                              Navigator.pop(context, null);
+                            },
+                            child: const Text('閉じる'),
                           ),
+                          const Spacer(),
+                          Text(
+                            isEdit ? 'ESを編集' : 'ESを追加',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () async {
+                              _dismissKeyboard();
+                              final items = _rows
+                                  .map((r) => EsQa(
+                                question: r.qCtrl.text,
+                                answer: r.aCtrl.text,
+                              ))
+                                  .toList();
+
+                              await InterstitialAdManager.showIfAllowed();
+
+                              if (!mounted) return;
+                              Navigator.pop(
+                                context,
+                                _EsBulkResult(
+                                  category: _category,
+                                  items: items,
+                                  fromCategoryWhenEditingOne:
+                                  widget.fromCategoryWhenEditingOne,
+                                  editingIndexInFromCategory:
+                                  widget.editingIndexInFromCategory,
+                                ),
+                              );
+                            },
+                            child: const Text('保存'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        controller: controller,
+                        keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          8,
+                          16,
+                          24 + MediaQuery.of(context).viewInsets.bottom,
                         ),
-                        const SizedBox(height: 12),
-                        for (int i = 0; i < _rows.length; i++) ...[
-                          _EsEditorBlock(
-                            index: i,
-                            row: _rows[i],
-                            onDelete: () => _removeRow(i),
-                            canDelete: _rows.length > 1,
+                        children: [
+                          InkWell(
+                            onTap: () async {
+                              _dismissKeyboard();
+                              final picked = await widget.openCategoryPicker();
+                              if (picked == null || !mounted) return;
+                              setState(() {
+                                _category = picked;
+                                _dirty = true;
+                              });
+                            },
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: 'カテゴリ',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(child: Text(catText)),
+                                  const Icon(Icons.unfold_more),
+                                ],
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 12),
+                          for (int i = 0; i < _rows.length; i++) ...[
+                            _EsEditorBlock(
+                              index: i,
+                              row: _rows[i],
+                              onDelete: () => _removeRow(i),
+                              canDelete: _rows.length > 1,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              _dismissKeyboard();
+                              _addRow();
+                            },
+                            icon: const Icon(Icons.add),
+                            label: const Text('設問を追加'),
+                          ),
                         ],
-                        OutlinedButton.icon(
-                          onPressed: _addRow,
-                          icon: const Icon(Icons.add),
-                          label: const Text('設問を追加'),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },
@@ -2193,6 +2255,7 @@ class _EsEditorBlock extends StatelessWidget {
             TextField(
               controller: row.qCtrl,
               maxLines: null,
+              onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               decoration: const InputDecoration(
                 labelText: '質問',
                 border: OutlineInputBorder(),
@@ -2202,6 +2265,7 @@ class _EsEditorBlock extends StatelessWidget {
             TextField(
               controller: row.aCtrl,
               maxLines: null,
+              onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               decoration: const InputDecoration(
                 labelText: '回答',
                 border: OutlineInputBorder(),
@@ -2213,7 +2277,6 @@ class _EsEditorBlock extends StatelessWidget {
     );
   }
 }
-
 class _ScheduleEditorSheet extends StatefulWidget {
   final String title;
   final ScheduleType initialType;
@@ -2245,6 +2308,10 @@ class _ScheduleEditorSheetState extends State<_ScheduleEditorSheet> {
   late final TextEditingController _noteCtrl;
   bool _dirty = false;
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2266,6 +2333,7 @@ class _ScheduleEditorSheetState extends State<_ScheduleEditorSheet> {
   }
 
   Future<bool> _confirmDiscard() async {
+    _dismissKeyboard();
     if (!_dirty) return true;
     final res = await showDialog<bool>(
       context: context,
@@ -2300,137 +2368,153 @@ class _ScheduleEditorSheetState extends State<_ScheduleEditorSheet> {
           minChildSize: 0.55,
           maxChildSize: 0.98,
           builder: (ctx, controller) {
-            return Material(
-              child: Column(
-                children: [
-                  const SizedBox(height: 10),
-                  Container(
-                    width: 44,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.black26,
-                      borderRadius: BorderRadius.circular(999),
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _dismissKeyboard,
+              child: Material(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Row(
-                      children: [
-                        TextButton(
-                          onPressed: () async {
-                            final ok = await _confirmDiscard();
-                            if (!ok) return;
-                            if (!mounted) return;
-                            Navigator.pop(context, null);
-                          },
-                          child: const Text('キャンセル'),
-                        ),
-                        const Spacer(),
-                        Text(
-                          widget.title,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w900),
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () async {
-                            if (_dt == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('日時を選択してください')),
-                              );
-                              return;
-                            }
-
-                            await InterstitialAdManager.showIfAllowed();
-
-                            if (!mounted) return;
-                            Navigator.pop(
-                              context,
-                              ScheduleItem(
-                                type: _type,
-                                dateTime: _dt!,
-                                note: _noteCtrl.text.trim().isEmpty
-                                    ? null
-                                    : _noteCtrl.text.trim(),
-                              ),
-                            );
-                          },
-                          child: const Text('保存'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      controller: controller,
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      children: [
-                        InkWell(
-                          onTap: () async {
-                            final picked = await widget.pickType(_type);
-                            if (!mounted) return;
-                            setState(() {
-                              _type = picked;
-                              _dirty = true;
-                            });
-                          },
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: '種類',
-                              border: OutlineInputBorder(),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(child: Text(typeText)),
-                                const Icon(Icons.unfold_more),
-                              ],
-                            ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          TextButton(
+                            onPressed: () async {
+                              _dismissKeyboard();
+                              final ok = await _confirmDiscard();
+                              if (!ok) return;
+                              if (!mounted) return;
+                              Navigator.pop(context, null);
+                            },
+                            child: const Text('キャンセル'),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        InkWell(
-                          onTap: () async {
-                            final picked = await widget.pickDateTime(_dt);
-                            if (!mounted || picked == null) return;
-                            setState(() {
-                              _dt = picked;
-                              _dirty = true;
-                            });
-                          },
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: '日時',
-                              border: OutlineInputBorder(),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _dt == null ? '未選択' : widget.dtText(_dt!),
-                                  ),
+                          const Spacer(),
+                          Text(
+                            widget.title,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () async {
+                              _dismissKeyboard();
+                              if (_dt == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('日時を選択してください')),
+                                );
+                                return;
+                              }
+
+                              await InterstitialAdManager.showIfAllowed();
+
+                              if (!mounted) return;
+                              Navigator.pop(
+                                context,
+                                ScheduleItem(
+                                  type: _type,
+                                  dateTime: _dt!,
+                                  note: _noteCtrl.text.trim().isEmpty
+                                      ? null
+                                      : _noteCtrl.text.trim(),
                                 ),
-                                const Icon(Icons.calendar_today, size: 18),
-                              ],
+                              );
+                            },
+                            child: const Text('保存'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        controller: controller,
+                        keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          8,
+                          16,
+                          24 + MediaQuery.of(context).viewInsets.bottom,
+                        ),
+                        children: [
+                          InkWell(
+                            onTap: () async {
+                              _dismissKeyboard();
+                              final picked = await widget.pickType(_type);
+                              if (!mounted) return;
+                              setState(() {
+                                _type = picked;
+                                _dirty = true;
+                              });
+                            },
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: '種類',
+                                border: OutlineInputBorder(),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(child: Text(typeText)),
+                                  const Icon(Icons.unfold_more),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _noteCtrl,
-                          maxLines: 5,
-                          decoration: const InputDecoration(
-                            labelText: 'メモ（任意）',
-                            border: OutlineInputBorder(),
-                            alignLabelWithHint: true,
+                          const SizedBox(height: 12),
+                          InkWell(
+                            onTap: () async {
+                              _dismissKeyboard();
+                              final picked = await widget.pickDateTime(_dt);
+                              if (!mounted || picked == null) return;
+                              setState(() {
+                                _dt = picked;
+                                _dirty = true;
+                              });
+                            },
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: '日時',
+                                border: OutlineInputBorder(),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _dt == null ? '未選択' : widget.dtText(_dt!),
+                                    ),
+                                  ),
+                                  const Icon(Icons.calendar_today, size: 18),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _noteCtrl,
+                            maxLines: 5,
+                            onTapOutside: (_) => _dismissKeyboard(),
+                            decoration: const InputDecoration(
+                              labelText: 'メモ',
+                              border: OutlineInputBorder(),
+                              alignLabelWithHint: true,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },
