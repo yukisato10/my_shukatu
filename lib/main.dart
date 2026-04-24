@@ -3,6 +3,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
+
+import 'firebase_options.dart';
 import 'db/hive_service.dart';
 import 'pages/home_page.dart';
 import 'pages/company_page.dart';
@@ -12,9 +16,15 @@ import 'ads/interstitial_ad_manager.dart';
 import 'ads/app_open_ad_manager.dart';
 
 Future<void> main() async {
-
-
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  await FirebaseAnalytics.instance.logEvent(
+    name: 'app_start',
+  );
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -116,8 +126,20 @@ class _RootScreenState extends State<RootScreen> {
   void initState() {
     super.initState();
 
+    FirebaseAnalytics.instance.logEvent(
+      name: 'view_home',
+    );
+
     // 次回の自然な表示用に先読みだけしておく
     InterstitialAdManager.preload();
+  }
+
+  Future<void> _logTabEvent(int i) async {
+    if (i == 0) {
+      await FirebaseAnalytics.instance.logEvent(name: 'view_home');
+    } else if (i == 1) {
+      await FirebaseAnalytics.instance.logEvent(name: 'view_company_page');
+    }
   }
 
   @override
@@ -126,7 +148,10 @@ class _RootScreenState extends State<RootScreen> {
       body: pages[_index],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) async {
+          await _logTabEvent(i);
+          setState(() => _index = i);
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home), label: "ホーム"),
           NavigationDestination(icon: Icon(Icons.apartment), label: "企業管理"),

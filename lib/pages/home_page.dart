@@ -11,7 +11,7 @@
 // 依存：HiveService / Company / ScheduleItem / ScheduleType / holiday_jp / shared_preferences / table_calendar
 
 import '../widgets/ad_scaffold.dart';
-
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -1031,6 +1031,11 @@ class _HomePageState extends State<HomePage> {
     company.schedules = list;
     company.updatedAt = DateTime.now();
     await company.save();
+
+    await FirebaseAnalytics.instance.logEvent(
+      name: 'add_schedule',
+    );
+
     return true;
   }
 

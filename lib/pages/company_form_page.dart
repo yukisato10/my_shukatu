@@ -18,6 +18,7 @@ import 'package:flutter/services.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 
 import '../db/hive_service.dart';
 import '../models/company.dart';
@@ -82,6 +83,7 @@ class _CompanyFormPageState extends State<CompanyFormPage>
 
   bool _saving = false;
   Timer? _debounce;
+  String _lastSavedMemoText = '';
 
   bool get _isEdit => widget.editing != null;
   bool get _isCreate => widget.editing == null;
@@ -175,6 +177,7 @@ class _CompanyFormPageState extends State<CompanyFormPage>
       _track = e.track;
       _phase = e.phase;
       _noteCtrl.text = e.note ?? '';
+      _lastSavedMemoText = _noteCtrl.text.trim();
       _desire = e.desireLevel;
 
       _schedules = List<ScheduleItem>.from(e.schedules)
@@ -758,6 +761,11 @@ class _CompanyFormPageState extends State<CompanyFormPage>
       );
 
       await box.add(c);
+
+      await FirebaseAnalytics.instance.logEvent(
+        name: 'add_company',
+      );
+
       await _tryShowStoreReviewPrompt();
 
       if (!mounted) return;
@@ -813,6 +821,14 @@ class _CompanyFormPageState extends State<CompanyFormPage>
       c.updatedAt = now;
 
       await c.save();
+
+      final currentMemoText = _noteCtrl.text.trim();
+      if (currentMemoText.isNotEmpty && currentMemoText != _lastSavedMemoText) {
+        _lastSavedMemoText = currentMemoText;
+        await FirebaseAnalytics.instance.logEvent(
+          name: 'save_memo',
+        );
+      }
 
       if (!auto && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -885,6 +901,10 @@ class _CompanyFormPageState extends State<CompanyFormPage>
     if (_isEdit) {
       await _saveEdit(auto: true);
     }
+
+    await FirebaseAnalytics.instance.logEvent(
+      name: 'save_es',
+    );
 
     await _tryShowStoreReviewPrompt();
   }
@@ -1002,6 +1022,11 @@ class _CompanyFormPageState extends State<CompanyFormPage>
     if (_isEdit) {
       await _saveEdit(auto: true);
     }
+
+    await FirebaseAnalytics.instance.logEvent(
+      name: 'add_schedule',
+    );
+
     await _tryShowStoreReviewPrompt();
   }
 
