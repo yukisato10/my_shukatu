@@ -8,7 +8,7 @@ class AdConfig {
   // 個別制御
   static const bool bannerEnabled = true;
   static const bool interstitialEnabled = false;
-  static const bool appOpenEnabled = false;
+  static const bool appOpenEnabled = true;
 
   static const bool useTestAds = false;
 
@@ -38,9 +38,9 @@ class AdConfig {
       'ca-app-pub-xxxxxxxxxxxxxxxx/xxxxxxxxxx';
 
   static const String androidAppOpen =
-      'ca-app-pub-xxxxxxxxxxxxxxxx/xxxxxxxxxx';
+      'ca-app-pub-8287454355119436/3963019675';
   static const String iosAppOpen =
-      'ca-app-pub-xxxxxxxxxxxxxxxx/xxxxxxxxxx';
+      'ca-app-pub-8287454355119436/5451361161';
 
   static String get bannerUnitId {
 

@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../config/ad_config.dart';
 
 class AppOpenAdManager {
@@ -9,15 +11,16 @@ class AppOpenAdManager {
   static AppOpenAd? _appOpenAd;
   static bool _isLoading = false;
   static bool _isShowing = false;
+  static bool _hasGoneBackground = false;
   static DateTime? _loadedAt;
   static StreamSubscription<AppState>? _appStateSub;
 
   static const _kLastShownMillis = 'app_open_last_shown_millis';
 
-  // 1日1回
-  static const Duration cooldown = Duration(hours: 24);
+  // 半日ごとに1回まで表示
+  static const Duration cooldown = Duration(hours: 12);
 
-  /// App Open 広告は4時間を超えると期限切れ扱い
+  // App Open広告は4時間を超えると期限切れ扱い
   static const Duration maxCacheAge = Duration(hours: 4);
 
   static bool get _isAdAvailable {
@@ -34,7 +37,13 @@ class AppOpenAdManager {
 
     _appStateSub ??=
         AppStateEventNotifier.appStateStream.listen((AppState state) async {
-          if (state == AppState.foreground) {
+          if (state == AppState.background) {
+            _hasGoneBackground = true;
+            return;
+          }
+
+          // 初回起動では出さず、一度バックグラウンドに行った後の復帰時だけ表示
+          if (state == AppState.foreground && _hasGoneBackground) {
             await showIfAvailable();
           }
         });
@@ -59,11 +68,17 @@ class AppOpenAdManager {
           _appOpenAd = ad;
           _loadedAt = DateTime.now();
           _isLoading = false;
-          completer.complete();
+
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
         },
         onAdFailedToLoad: (error) {
           _isLoading = false;
-          completer.complete();
+
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
         },
       ),
     );
@@ -74,6 +89,7 @@ class AppOpenAdManager {
   static Future<bool> _isCooldownPassed() async {
     final prefs = await SharedPreferences.getInstance();
     final lastMillis = prefs.getInt(_kLastShownMillis);
+
     if (lastMillis == null) return true;
 
     final last = DateTime.fromMillisecondsSinceEpoch(lastMillis);
@@ -82,6 +98,7 @@ class AppOpenAdManager {
 
   static Future<void> _markShownNow() async {
     final prefs = await SharedPreferences.getInstance();
+
     await prefs.setInt(
       _kLastShownMillis,
       DateTime.now().millisecondsSinceEpoch,
@@ -117,7 +134,10 @@ class AppOpenAdManager {
         _loadedAt = null;
         _isShowing = false;
         unawaited(loadAd());
-        if (!completer.isCompleted) completer.complete(true);
+
+        if (!completer.isCompleted) {
+          completer.complete(true);
+        }
       },
       onAdFailedToShowFullScreenContent: (ad, error) async {
         ad.dispose();
@@ -125,11 +145,15 @@ class AppOpenAdManager {
         _loadedAt = null;
         _isShowing = false;
         unawaited(loadAd());
-        if (!completer.isCompleted) completer.complete(false);
+
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
       },
     );
 
     ad.show();
+
     return completer.future;
   }
 
@@ -141,10 +165,13 @@ class AppOpenAdManager {
   static Future<void> dispose() async {
     await _appStateSub?.cancel();
     _appStateSub = null;
+
     _appOpenAd?.dispose();
     _appOpenAd = null;
+
     _loadedAt = null;
     _isLoading = false;
     _isShowing = false;
+    _hasGoneBackground = false;
   }
 }

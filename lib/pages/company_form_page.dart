@@ -316,30 +316,28 @@ class _CompanyFormPageState extends State<CompanyFormPage>
   Future<void> _tryShowStoreReviewPrompt() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final companyCount = _currentGlobalCompanyCount();
-    final scheduleCount = _currentGlobalScheduleCount();
-    final esCount = _currentGlobalEsCount();
+    final companyCount =
+        prefs.getInt('review_company_count') ?? 0;
 
-    final baseConditionMet =
-        companyCount >= 3 &&
-            scheduleCount >= 3 &&
-            esCount >= 1;
-    if (!baseConditionMet) return;
+    final scheduleCount =
+        prefs.getInt('review_schedule_count') ?? 0;
 
-    final nextScheduleTrigger =
-        prefs.getInt(_kReviewPromptNextScheduleCountKey) ?? 3;
-    if (scheduleCount < nextScheduleTrigger) return;
+    // 企業3件 or スケジュール3件で表示
+    final shouldShow =
+        companyCount >= 3 || scheduleCount >= 3;
+
+    if (!shouldShow) return;
 
     final inAppReview = InAppReview.instance;
     final isAvailable = await inAppReview.isAvailable();
+
     if (!isAvailable) return;
 
     await inAppReview.requestReview();
 
-    await prefs.setInt(
-      _kReviewPromptNextScheduleCountKey,
-      scheduleCount + 5,
-    );
+    // 表示後にカウントリセット
+    await prefs.setInt('review_company_count', 0);
+    await prefs.setInt('review_schedule_count', 0);
   }
 
   Future<void> _deleteCompany() async {
@@ -762,6 +760,16 @@ class _CompanyFormPageState extends State<CompanyFormPage>
 
       await box.add(c);
 
+      final prefs = await SharedPreferences.getInstance();
+
+      final currentCompanyCount =
+          prefs.getInt('review_company_count') ?? 0;
+
+      await prefs.setInt(
+        'review_company_count',
+        currentCompanyCount + 1,
+      );
+
       await FirebaseAnalytics.instance.logEvent(
         name: 'add_company',
       );
@@ -1022,6 +1030,16 @@ class _CompanyFormPageState extends State<CompanyFormPage>
     if (_isEdit) {
       await _saveEdit(auto: true);
     }
+
+    final prefs = await SharedPreferences.getInstance();
+
+    final currentScheduleCount =
+        prefs.getInt('review_schedule_count') ?? 0;
+
+    await prefs.setInt(
+      'review_schedule_count',
+      currentScheduleCount + 1,
+    );
 
     await FirebaseAnalytics.instance.logEvent(
       name: 'add_schedule',

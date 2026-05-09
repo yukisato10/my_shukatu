@@ -366,19 +366,16 @@ class _HomePageState extends State<HomePage> {
   Future<void> _tryShowStoreReviewPrompt() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final companyCount = _currentGlobalCompanyCount();
-    final scheduleCount = _currentGlobalScheduleCount();
-    final esCount = _currentGlobalEsCount();
+    final companyCount =
+        prefs.getInt('review_company_count') ?? 0;
 
-    final baseConditionMet =
-        companyCount >= 3 &&
-            scheduleCount >= 3 &&
-            esCount >= 1;
-    if (!baseConditionMet) return;
+    final scheduleCount =
+        prefs.getInt('review_schedule_count') ?? 0;
 
-    final nextScheduleTrigger =
-        prefs.getInt(_kReviewPromptNextScheduleCountKey) ?? 3;
-    if (scheduleCount < nextScheduleTrigger) return;
+    final shouldShow =
+        companyCount >= 3 || scheduleCount >= 3;
+
+    if (!shouldShow) return;
 
     final inAppReview = InAppReview.instance;
     final isAvailable = await inAppReview.isAvailable();
@@ -386,10 +383,8 @@ class _HomePageState extends State<HomePage> {
 
     await inAppReview.requestReview();
 
-    await prefs.setInt(
-      _kReviewPromptNextScheduleCountKey,
-      scheduleCount + 5,
-    );
+    await prefs.setInt('review_company_count', 0);
+    await prefs.setInt('review_schedule_count', 0);
   }
 
   Future<void> _showPrivacyPolicy() async {
@@ -1031,6 +1026,16 @@ class _HomePageState extends State<HomePage> {
     company.schedules = list;
     company.updatedAt = DateTime.now();
     await company.save();
+
+    final prefs = await SharedPreferences.getInstance();
+
+    final currentScheduleCount =
+        prefs.getInt('review_schedule_count') ?? 0;
+
+    await prefs.setInt(
+      'review_schedule_count',
+      currentScheduleCount + 1,
+    );
 
     await FirebaseAnalytics.instance.logEvent(
       name: 'add_schedule',

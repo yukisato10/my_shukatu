@@ -31,8 +31,12 @@ Future<void> main() async {
   ]);
 
   await MobileAds.instance.initialize();
+
   await InterstitialAdManager.preload();
+
+  // 初回起動では表示せず、バックグラウンド復帰時だけ表示
   await AppOpenAdManager.initialize();
+
   await HiveService.init();
   await initializeDateFormatting('ja_JP', null);
 
@@ -64,44 +68,8 @@ class MyApp extends StatelessWidget {
           surfaceContainer: Colors.white,
         ),
       ),
-      home: const StartupGate(),
+      home: const RootScreen(),
     );
-  }
-}
-
-class StartupGate extends StatefulWidget {
-  const StartupGate({super.key});
-
-  @override
-  State<StartupGate> createState() => _StartupGateState();
-}
-
-class _StartupGateState extends State<StartupGate> {
-  bool _done = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _boot();
-  }
-
-  Future<void> _boot() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    await AppOpenAdManager.showIfAvailable();
-
-    if (!mounted) return;
-    setState(() => _done = true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_done) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    return const RootScreen();
   }
 }
 
@@ -130,7 +98,6 @@ class _RootScreenState extends State<RootScreen> {
       name: 'view_home',
     );
 
-    // 次回の自然な表示用に先読みだけしておく
     InterstitialAdManager.preload();
   }
 
@@ -153,10 +120,10 @@ class _RootScreenState extends State<RootScreen> {
           setState(() => _index = i);
         },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home), label: "ホーム"),
-          NavigationDestination(icon: Icon(Icons.apartment), label: "企業管理"),
-          NavigationDestination(icon: Icon(Icons.badge), label: "プロフィール"),
-          NavigationDestination(icon: Icon(Icons.library_books), label: "お役立ち"),
+          NavigationDestination(icon: Icon(Icons.home), label: 'ホーム'),
+          NavigationDestination(icon: Icon(Icons.apartment), label: '企業管理'),
+          NavigationDestination(icon: Icon(Icons.badge), label: 'プロフィール'),
+          NavigationDestination(icon: Icon(Icons.library_books), label: 'お役立ち'),
         ],
       ),
     );
