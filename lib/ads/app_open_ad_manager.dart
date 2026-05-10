@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,16 +12,14 @@ class AppOpenAdManager {
   static AppOpenAd? _appOpenAd;
   static bool _isLoading = false;
   static bool _isShowing = false;
-  static bool _hasGoneBackground = false;
   static DateTime? _loadedAt;
-  static StreamSubscription<AppState>? _appStateSub;
 
   static const _kLastShownMillis = 'app_open_last_shown_millis';
 
-  // 半日ごとに1回まで表示
-  static const Duration cooldown = Duration(hours: 12);
+  // 6時間ごとに1回まで表示
+  static const Duration cooldown = Duration(hours: 6);
 
-  // App Open広告は4時間を超えると期限切れ扱い
+  // App Open広告は4時間で期限切れ
   static const Duration maxCacheAge = Duration(hours: 4);
 
   static bool get _isAdAvailable {
@@ -30,30 +29,32 @@ class AppOpenAdManager {
   }
 
   static Future<void> initialize() async {
-    if (!AdConfig.adsEnabled) return;
-    if (!AdConfig.appOpenEnabled) return;
+    debugPrint('🟦 initialize called');
+
+    if (!AdConfig.adsEnabled) {
+      debugPrint('❌ adsEnabled false');
+      return;
+    }
+
+    if (!AdConfig.appOpenEnabled) {
+      debugPrint('❌ appOpenEnabled false');
+      return;
+    }
 
     await loadAd();
-
-    _appStateSub ??=
-        AppStateEventNotifier.appStateStream.listen((AppState state) async {
-          if (state == AppState.background) {
-            _hasGoneBackground = true;
-            return;
-          }
-
-          // 初回起動では出さず、一度バックグラウンドに行った後の復帰時だけ表示
-          if (state == AppState.foreground && _hasGoneBackground) {
-            await showIfAvailable();
-          }
-        });
   }
 
   static Future<void> loadAd() async {
+    debugPrint('⏳ loadAd called');
+
     if (!AdConfig.adsEnabled) return;
     if (!AdConfig.appOpenEnabled) return;
     if (_isLoading) return;
-    if (_isAdAvailable) return;
+
+    if (_isAdAvailable) {
+      debugPrint('✅ already loaded');
+      return;
+    }
 
     _isLoading = true;
 
@@ -64,6 +65,8 @@ class AppOpenAdManager {
       request: const AdRequest(),
       adLoadCallback: AppOpenAdLoadCallback(
         onAdLoaded: (ad) {
+          debugPrint('✅ AppOpenAd loaded');
+
           _appOpenAd?.dispose();
           _appOpenAd = ad;
           _loadedAt = DateTime.now();
@@ -74,6 +77,8 @@ class AppOpenAdManager {
           }
         },
         onAdFailedToLoad: (error) {
+          debugPrint('❌ AppOpenAd failed: $error');
+
           _isLoading = false;
 
           if (!completer.isCompleted) {
@@ -90,10 +95,19 @@ class AppOpenAdManager {
     final prefs = await SharedPreferences.getInstance();
     final lastMillis = prefs.getInt(_kLastShownMillis);
 
-    if (lastMillis == null) return true;
+    if (lastMillis == null) {
+      debugPrint('✅ cooldown first');
+      return true;
+    }
 
     final last = DateTime.fromMillisecondsSinceEpoch(lastMillis);
-    return DateTime.now().difference(last) >= cooldown;
+
+    final passed =
+        DateTime.now().difference(last) >= cooldown;
+
+    debugPrint('⏱ cooldown passed: $passed');
+
+    return passed;
   }
 
   static Future<void> _markShownNow() async {
@@ -103,22 +117,40 @@ class AppOpenAdManager {
       _kLastShownMillis,
       DateTime.now().millisecondsSinceEpoch,
     );
+
+    debugPrint('📝 marked shown');
   }
 
   static Future<bool> showIfAvailable() async {
+    debugPrint('🟨 showIfAvailable called');
+
     if (!AdConfig.adsEnabled) return false;
     if (!AdConfig.appOpenEnabled) return false;
-    if (_isShowing) return false;
+
+    if (_isShowing) {
+      debugPrint('⚠ already showing');
+      return false;
+    }
 
     final allowed = await _isCooldownPassed();
-    if (!allowed) return false;
+
+    if (!allowed) {
+      debugPrint('⚠ cooldown not passed');
+      return false;
+    }
 
     if (!_isAdAvailable) {
+      debugPrint('⚠ ad unavailable -> reload');
+
       await loadAd();
     }
 
     final ad = _appOpenAd;
-    if (ad == null) return false;
+
+    if (ad == null) {
+      debugPrint('❌ ad null');
+      return false;
+    }
 
     _isShowing = true;
 
@@ -126,13 +158,19 @@ class AppOpenAdManager {
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (ad) async {
+        debugPrint('🚀 ad showed');
+
         await _markShownNow();
       },
       onAdDismissedFullScreenContent: (ad) async {
+        debugPrint('✅ ad dismissed');
+
         ad.dispose();
+
         _appOpenAd = null;
         _loadedAt = null;
         _isShowing = false;
+
         unawaited(loadAd());
 
         if (!completer.isCompleted) {
@@ -140,10 +178,14 @@ class AppOpenAdManager {
         }
       },
       onAdFailedToShowFullScreenContent: (ad, error) async {
+        debugPrint('❌ failed to show: $error');
+
         ad.dispose();
+
         _appOpenAd = null;
         _loadedAt = null;
         _isShowing = false;
+
         unawaited(loadAd());
 
         if (!completer.isCompleted) {
@@ -152,6 +194,8 @@ class AppOpenAdManager {
       },
     );
 
+    debugPrint('🚀 ad.show called');
+
     ad.show();
 
     return completer.future;
@@ -159,19 +203,21 @@ class AppOpenAdManager {
 
   static Future<void> resetCooldownForTest() async {
     final prefs = await SharedPreferences.getInstance();
+
     await prefs.remove(_kLastShownMillis);
+
+    debugPrint('🧪 cooldown reset');
   }
 
   static Future<void> dispose() async {
-    await _appStateSub?.cancel();
-    _appStateSub = null;
+    debugPrint('🧹 dispose');
 
     _appOpenAd?.dispose();
+
     _appOpenAd = null;
 
     _loadedAt = null;
     _isLoading = false;
     _isShowing = false;
-    _hasGoneBackground = false;
   }
 }

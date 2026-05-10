@@ -34,7 +34,7 @@ Future<void> main() async {
 
   await InterstitialAdManager.preload();
 
-  // 初回起動では表示せず、バックグラウンド復帰時だけ表示
+  // App Open広告を事前ロード
   await AppOpenAdManager.initialize();
 
   await HiveService.init();
@@ -80,8 +80,9 @@ class RootScreen extends StatefulWidget {
   State<RootScreen> createState() => _RootScreenState();
 }
 
-class _RootScreenState extends State<RootScreen> {
+class _RootScreenState extends State<RootScreen> with WidgetsBindingObserver {
   int _index = 0;
+  bool _hasGoneBackground = false;
 
   final pages = const [
     HomePage(),
@@ -94,11 +95,33 @@ class _RootScreenState extends State<RootScreen> {
   void initState() {
     super.initState();
 
+    WidgetsBinding.instance.addObserver(this);
+
     FirebaseAnalytics.instance.logEvent(
       name: 'view_home',
     );
 
     InterstitialAdManager.preload();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _hasGoneBackground = true;
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed && _hasGoneBackground) {
+      AppOpenAdManager.showIfAvailable();
+    }
   }
 
   Future<void> _logTabEvent(int i) async {
