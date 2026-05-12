@@ -31,6 +31,7 @@ dependencies:
   firebase_messaging: ^16.0.4
 
 
+
   http: ^1.4.0
   in_app_review: ^2.0.9
   holiday_jp: ^0.0.8

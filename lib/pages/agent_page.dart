@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import '../widgets/native_ad_widget.dart';
 import '../widgets/ad_scaffold.dart';
 
 class AgentPage extends StatefulWidget {
@@ -98,6 +98,32 @@ class _AgentPageState extends State<AgentPage>
 
       return matchesCategory && matchesSearch;
     }).toList();
+  }
+  List<Widget> _buildNewsListWithAds(List<JobNewsItem> newsList) {
+    final widgets = <Widget>[];
+
+    for (int i = 0; i < newsList.length; i++) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _NewsCard(news: newsList[i]),
+        ),
+      );
+
+      final shouldShowAd =
+          (i + 1) % 3 == 0 && i != newsList.length - 1;
+
+      if (shouldShowAd) {
+        widgets.add(
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: NativeAdWidget(),
+          ),
+        );
+      }
+    }
+
+    return widgets;
   }
 
   List<AgentServiceItem> _filterServices(List<AgentServiceItem> services) {
@@ -333,12 +359,7 @@ class _AgentPageState extends State<AgentPage>
               if (filteredNews.isEmpty)
                 const _EmptyNewsBox()
               else
-                ...filteredNews.map(
-                      (news) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _NewsCard(news: news),
-                  ),
-                ),
+                ..._buildNewsListWithAds(filteredNews),
             ],
           ),
         );
