@@ -14,7 +14,7 @@ class AdConfig {
   static const bool nativeEnabled = true;
 
   // 開発中は true 推奨
-  static const bool useTestAds = true;
+  static const bool useTestAds = false;
 
   // =========================
   // Test Ad Unit IDs
