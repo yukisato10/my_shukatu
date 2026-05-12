@@ -5,9 +5,9 @@ import google_mobile_ads
 class NativeAdFactory: NSObject, FLTNativeAdFactory {
 
   func createNativeAd(
-    _ nativeAd: NativeAd,
+    _ nativeAd: GADNativeAd,
     customOptions: [AnyHashable : Any]? = nil
-  ) -> NativeAdView {
+  ) -> GADNativeAdView {
 
     let nibView = Bundle.main.loadNibNamed(
       "NativeAdView",
@@ -15,8 +15,8 @@ class NativeAdFactory: NSObject, FLTNativeAdFactory {
       options: nil
     )?.first
 
-    guard let nativeAdView = nibView as? NativeAdView else {
-      fatalError("NativeAdView.xib not found")
+    guard let nativeAdView = nibView as? GADNativeAdView else {
+      fatalError("NativeAdView.xib not found or not GADNativeAdView")
     }
 
     // Headline
@@ -38,7 +38,7 @@ class NativeAdFactory: NSObject, FLTNativeAdFactory {
     nativeAdView.callToActionView?.isHidden = nativeAd.callToAction == nil
     nativeAdView.callToActionView?.isUserInteractionEnabled = false
 
-    // 最後にセット
+    // 必ず最後
     nativeAdView.nativeAd = nativeAd
 
     return nativeAdView
