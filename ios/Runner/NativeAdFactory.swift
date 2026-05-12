@@ -47,6 +47,8 @@ class NativeAdFactory: NSObject, FLTNativeAdFactory {
         nativeAdView.callToActionView?.isHidden =
             nativeAd.callToAction == nil
 
+        nativeAdView.callToActionView?.isUserInteractionEnabled = false
+
         return nativeAdView
     }
 }
