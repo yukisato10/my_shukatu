@@ -19,7 +19,7 @@ import 'package:in_app_review/in_app_review.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
-
+import '../notifications/schedule_notification_scheduler.dart';
 import '../db/hive_service.dart';
 import '../models/company.dart';
 
@@ -146,6 +146,26 @@ class _CompanyFormPageState extends State<CompanyFormPage>
     ScheduleType.finalInterview: '最終面接',
     ScheduleType.other: 'その他',
   };
+
+  Future<void> _rescheduleNotificationsFromBox() async {
+    final box = HiveService.companyBox();
+
+    final items = <ScheduleNotificationItem>[];
+
+    for (final company in box.values) {
+      for (final schedule in company.schedules) {
+        items.add(
+          ScheduleNotificationItem(
+            date: schedule.dateTime,
+            typeLabel: _scheduleTypeLabel[schedule.type] ?? 'その他',
+          ),
+        );
+      }
+    }
+
+    await ScheduleNotificationScheduler.rescheduleAll(items);
+  }
+
 
   static const Map<DesireLevel, String> _desireLabel = {
     DesireLevel.high: '高',
@@ -368,6 +388,8 @@ class _CompanyFormPageState extends State<CompanyFormPage>
 
     try {
       await c.delete();
+
+      await _rescheduleNotificationsFromBox();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -760,6 +782,8 @@ class _CompanyFormPageState extends State<CompanyFormPage>
 
       await box.add(c);
 
+      await _rescheduleNotificationsFromBox();
+
       final prefs = await SharedPreferences.getInstance();
 
       final currentCompanyCount =
@@ -829,6 +853,8 @@ class _CompanyFormPageState extends State<CompanyFormPage>
       c.updatedAt = now;
 
       await c.save();
+
+      await _rescheduleNotificationsFromBox();
 
       final currentMemoText = _noteCtrl.text.trim();
       if (currentMemoText.isNotEmpty && currentMemoText != _lastSavedMemoText) {

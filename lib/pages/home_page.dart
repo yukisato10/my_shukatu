@@ -20,10 +20,10 @@ import 'package:holiday_jp/holiday_jp.dart' as holiday_jp;
 import 'package:in_app_review/in_app_review.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
-
+import '../notifications/schedule_notification_scheduler.dart';
 import '../db/hive_service.dart';
 import '../models/company.dart';
-
+import '../notifications/news_notification_service.dart';
 // =====================
 // Calendar models
 // =====================
@@ -108,6 +108,26 @@ class _HomePageState extends State<HomePage> {
     ScheduleType.finalInterview: '最終面接',
     ScheduleType.other: 'その他',
   };
+
+  Future<void> _rescheduleNotificationsFromBox() async {
+    final box = HiveService.companyBox();
+
+    final items = <ScheduleNotificationItem>[];
+
+    for (final company in box.values) {
+      for (final schedule in company.schedules) {
+        items.add(
+          ScheduleNotificationItem(
+            date: schedule.dateTime,
+            typeLabel: _scheduleTypeLabel[schedule.type] ?? 'その他',
+          ),
+        );
+      }
+    }
+
+    await ScheduleNotificationScheduler.rescheduleAll(items);
+  }
+
 
   @override
   void initState() {
@@ -498,49 +518,175 @@ class _HomePageState extends State<HomePage> {
   Future<void> _openSupportSheet() async {
     final cs = Theme.of(context).colorScheme;
 
+    bool scheduleEnabled =
+    await ScheduleNotificationScheduler.isEnabled();
+
+    bool newsEnabled =
+    await NewsNotificationService.isEnabled();
+
+    if (!mounted) return;
+
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       useSafeArea: true,
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'サポート',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+                    Row(
+                      children: [
+                        Text(
+                          'サポート',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // スケジュール通知
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surface,
                       ),
+                      child: SwitchListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        secondary: Icon(
+                          Icons.notifications_active_outlined,
+                          color: cs.primary,
+                        ),
+                        title: const Text(
+                          'スケジュール通知',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          '予定がある日のみ通知します',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        value: scheduleEnabled,
+                        onChanged: (value) async {
+                          setModalState(() {
+                            scheduleEnabled = value;
+                          });
+
+                          await ScheduleNotificationScheduler
+                              .setEnabled(value);
+
+                          if (!mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                value
+                                    ? '通知をONにしました'
+                                    : '通知をOFFにしました',
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // ニュース通知
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surface,
+                      ),
+                      child: SwitchListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        secondary: Icon(
+                          Icons.newspaper_outlined,
+                          color: cs.primary,
+                        ),
+                        title: const Text(
+                          '就活ニュース通知',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          '新しいニュースをまとめて通知します',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        value: newsEnabled,
+                        onChanged: (value) async {
+                          setModalState(() {
+                            newsEnabled = value;
+                          });
+
+                          await NewsNotificationService
+                              .setEnabled(value);
+
+                          if (!mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                value
+                                    ? 'ニュース通知をONにしました'
+                                    : 'ニュース通知をOFFにしました',
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      leading: Icon(
+                        Icons.privacy_tip_outlined,
+                        color: cs.primary,
+                      ),
+                      title: const Text(
+                        'プライバシーポリシー',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        await _showPrivacyPolicy();
+                      },
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  leading: Icon(Icons.privacy_tip_outlined, color: cs.primary),
-                  title: const Text(
-                    'プライバシーポリシー',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await _showPrivacyPolicy();
-                  },
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -766,6 +912,8 @@ class _HomePageState extends State<HomePage> {
     company.schedules = list;
     company.updatedAt = DateTime.now();
     await company.save();
+
+    await _rescheduleNotificationsFromBox();
 
     if (!mounted) return;
     _sheetRefresh.value++;
@@ -1027,6 +1175,8 @@ class _HomePageState extends State<HomePage> {
     company.updatedAt = DateTime.now();
     await company.save();
 
+    await _rescheduleNotificationsFromBox();
+
     final prefs = await SharedPreferences.getInstance();
 
     final currentScheduleCount =
@@ -1082,6 +1232,8 @@ class _HomePageState extends State<HomePage> {
     company.schedules = list;
     company.updatedAt = DateTime.now();
     await company.save();
+
+    await _rescheduleNotificationsFromBox();
 
     if (!mounted) return;
     _sheetRefresh.value++;
