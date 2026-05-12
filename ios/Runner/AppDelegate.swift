@@ -1,11 +1,12 @@
 import Flutter
 import UIKit
 import GoogleMobileAds
+import google_mobile_ads
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
 
-  private var nativeAdFactory: NativeAdFactory!
+  private var nativeAdFactory: NativeAdFactory?
 
   override func application(
     _ application: UIApplication,
@@ -19,7 +20,7 @@ import GoogleMobileAds
     FLTGoogleMobileAdsPlugin.registerNativeAdFactory(
       self,
       factoryId: "listTile",
-      nativeAdFactory: nativeAdFactory
+      nativeAdFactory: nativeAdFactory!
     )
 
     return super.application(
