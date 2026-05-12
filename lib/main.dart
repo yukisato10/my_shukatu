@@ -5,18 +5,25 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
-import 'notifications/news_notification_service.dart';
+
 import 'firebase_options.dart';
 import 'db/hive_service.dart';
 import 'models/company.dart';
+
 import 'pages/home_page.dart';
 import 'pages/company_page.dart';
 import 'pages/memo_page.dart';
 import 'pages/agent_page.dart';
+
 import 'ads/interstitial_ad_manager.dart';
 import 'ads/app_open_ad_manager.dart';
+
 import 'notifications/notification_service.dart';
+import 'notifications/news_notification_service.dart';
 import 'notifications/schedule_notification_scheduler.dart';
+
+final ValueNotifier<String> startupStatus =
+ValueNotifier<String>('起動診断を開始しています...');
 
 String scheduleTypeLabel(ScheduleType type) {
   switch (type) {
@@ -71,34 +78,121 @@ Future<void> _rescheduleExistingNotifications() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  runApp(const StartupDiagnosticApp());
 
-  await NotificationService.initialize();
-  await NewsNotificationService.initialize();
+  await _runStartupDiagnostics();
+}
 
-  await HiveService.init();
+Future<void> _runStartupDiagnostics() async {
+  try {
+    startupStatus.value = 'STEP 1: Firebase 初期化中...';
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    startupStatus.value = 'STEP 1: Firebase 完了';
 
-  await _rescheduleExistingNotifications();
+    startupStatus.value = 'STEP 2: Hive 初期化中...';
+    await HiveService.init();
+    startupStatus.value = 'STEP 2: Hive 完了';
 
-  await FirebaseAnalytics.instance.logEvent(
-    name: 'app_start',
-  );
+    startupStatus.value = 'STEP 3: 日付フォーマット初期化中...';
+    await initializeDateFormatting('ja_JP', null);
+    startupStatus.value = 'STEP 3: 日付フォーマット完了';
 
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+    startupStatus.value = 'STEP 4: 画面向き固定中...';
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+    startupStatus.value = 'STEP 4: 画面向き固定完了';
 
-  await MobileAds.instance.initialize();
+    startupStatus.value = 'STEP 5: 通知初期化中...';
+    await NotificationService.initialize();
+    startupStatus.value = 'STEP 5: 通知初期化完了';
 
-  await InterstitialAdManager.preload();
+    startupStatus.value = 'STEP 6: ニュース通知初期化中...';
+    await NewsNotificationService.initialize();
+    startupStatus.value = 'STEP 6: ニュース通知初期化完了';
 
-  await AppOpenAdManager.initialize();
+    startupStatus.value = 'STEP 7: 既存予定通知の再登録中...';
+    await _rescheduleExistingNotifications();
+    startupStatus.value = 'STEP 7: 既存予定通知の再登録完了';
 
-  await initializeDateFormatting('ja_JP', null);
+    startupStatus.value = 'STEP 8: Analytics送信中...';
+    await FirebaseAnalytics.instance.logEvent(
+      name: 'app_start',
+    );
+    startupStatus.value = 'STEP 8: Analytics送信完了';
 
-  runApp(const MyApp());
+    startupStatus.value = 'STEP 9: MobileAds初期化中...';
+    await MobileAds.instance.initialize();
+    startupStatus.value = 'STEP 9: MobileAds初期化完了';
+
+    startupStatus.value = 'STEP 10: インタースティシャル広告ロード中...';
+    await InterstitialAdManager.preload();
+    startupStatus.value = 'STEP 10: インタースティシャル広告ロード完了';
+
+    startupStatus.value = 'STEP 11: AppOpen広告初期化中...';
+    await AppOpenAdManager.initialize();
+    startupStatus.value = 'STEP 11: AppOpen広告初期化完了';
+
+    startupStatus.value = 'STEP 12: アプリ起動完了';
+
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    runApp(const MyApp());
+  } catch (e, s) {
+    debugPrint('STARTUP ERROR: $e');
+    debugPrintStack(stackTrace: s);
+
+    startupStatus.value = '起動エラー発生:\n$e';
+  }
+}
+
+class StartupDiagnosticApp extends StatelessWidget {
+  const StartupDiagnosticApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ValueListenableBuilder<String>(
+              valueListenable: startupStatus,
+              builder: (context, value, _) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 24),
+                    const Text(
+                      '起動診断中',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      value,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
