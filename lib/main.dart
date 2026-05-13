@@ -72,6 +72,25 @@ Future<void> _rescheduleExistingNotifications() async {
   await ScheduleNotificationScheduler.rescheduleAll(items);
 }
 
+Future<void> _initializeAfterLaunch() async {
+  try {
+    await FirebaseAnalytics.instance.logEvent(name: 'app_start');
+
+    await NotificationService.initialize();
+
+    await Future.wait([
+      NewsNotificationService.initialize(),
+      _rescheduleExistingNotifications(),
+      MobileAds.instance.initialize(),
+      InterstitialAdManager.preload(),
+      AppOpenAdManager.initialize(),
+    ]);
+  } catch (e, st) {
+    debugPrint('❌ background initialize error: $e');
+    debugPrint('$st');
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -79,31 +98,19 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  await NotificationService.initialize();
-
-  await NewsNotificationService.initialize();
-
   await HiveService.init();
-
-  await _rescheduleExistingNotifications();
-
-  await FirebaseAnalytics.instance.logEvent(
-    name: 'app_start',
-  );
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
 
-  await MobileAds.instance.initialize();
-
-  await InterstitialAdManager.preload();
-
-  await AppOpenAdManager.initialize();
-
   await initializeDateFormatting('ja_JP', null);
 
   runApp(const MyApp());
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _initializeAfterLaunch();
+  });
 }
 
 class MyApp extends StatelessWidget {

@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/native_ad_widget.dart';
-import '../widgets/ad_scaffold.dart';
+
 
 class AgentPage extends StatefulWidget {
   const AgentPage({super.key});
@@ -202,7 +202,7 @@ class _AgentPageState extends State<AgentPage>
 
     return DefaultTabController(
       length: 2,
-      child: AdScaffold(
+      child: Scaffold(
         body: SafeArea(
           child: Column(
             children: [
