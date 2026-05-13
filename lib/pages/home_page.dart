@@ -609,55 +609,55 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(height: 10),
 
                     // ニュース通知
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        color: Theme.of(context)
-                            .colorScheme
-                            .surface,
-                      ),
-                      child: SwitchListTile(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        secondary: Icon(
-                          Icons.newspaper_outlined,
-                          color: cs.primary,
-                        ),
-                        title: const Text(
-                          '就活ニュース通知',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          '新しいニュースをまとめて通知します',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        value: newsEnabled,
-                        onChanged: (value) async {
-                          setModalState(() {
-                            newsEnabled = value;
-                          });
-
-                          await NewsNotificationService
-                              .setEnabled(value);
-
-                          if (!mounted) return;
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                value
-                                    ? 'ニュース通知をONにしました'
-                                    : 'ニュース通知をOFFにしました',
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                    // Container(
+                    //   decoration: BoxDecoration(
+                    //     borderRadius: BorderRadius.circular(14),
+                    //     color: Theme.of(context)
+                    //         .colorScheme
+                    //         .surface,
+                    //   ),
+                    //   child: SwitchListTile(
+                    //     shape: RoundedRectangleBorder(
+                    //       borderRadius: BorderRadius.circular(14),
+                    //     ),
+                    //     secondary: Icon(
+                    //       Icons.newspaper_outlined,
+                    //       color: cs.primary,
+                    //     ),
+                    //     title: const Text(
+                    //       '就活ニュース通知',
+                    //       style: TextStyle(
+                    //         fontSize: 14,
+                    //         fontWeight: FontWeight.w700,
+                    //       ),
+                    //     ),
+                    //     subtitle: const Text(
+                    //       '新しいニュースをまとめて通知します',
+                    //       style: TextStyle(fontSize: 12),
+                    //     ),
+                    //     value: newsEnabled,
+                    //     onChanged: (value) async {
+                    //       setModalState(() {
+                    //         newsEnabled = value;
+                    //       });
+                    //
+                    //       await NewsNotificationService
+                    //           .setEnabled(value);
+                    //
+                    //       if (!mounted) return;
+                    //
+                    //       ScaffoldMessenger.of(context).showSnackBar(
+                    //         SnackBar(
+                    //           content: Text(
+                    //             value
+                    //                 ? 'ニュース通知をONにしました'
+                    //                 : 'ニュース通知をOFFにしました',
+                    //           ),
+                    //         ),
+                    //       );
+                    //     },
+                    //   ),
+                    // ),
 
                     const SizedBox(height: 10),
 

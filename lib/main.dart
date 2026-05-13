@@ -19,7 +19,6 @@ import 'ads/interstitial_ad_manager.dart';
 import 'ads/app_open_ad_manager.dart';
 
 import 'notifications/notification_service.dart';
-import 'notifications/news_notification_service.dart';
 import 'notifications/schedule_notification_scheduler.dart';
 
 String scheduleTypeLabel(ScheduleType type) {
@@ -74,14 +73,14 @@ Future<void> _rescheduleExistingNotifications() async {
 
 Future<void> _initializeAfterLaunch() async {
   try {
-    await FirebaseAnalytics.instance.logEvent(name: 'app_start');
+    await FirebaseAnalytics.instance.logEvent(
+      name: 'app_start',
+    );
 
     await NotificationService.initialize();
 
     await Future.wait([
-      NewsNotificationService.initialize(),
       _rescheduleExistingNotifications(),
-      MobileAds.instance.initialize(),
       InterstitialAdManager.preload(),
       AppOpenAdManager.initialize(),
     ]);
@@ -105,6 +104,8 @@ Future<void> main() async {
   ]);
 
   await initializeDateFormatting('ja_JP', null);
+
+  await MobileAds.instance.initialize();
 
   runApp(const MyApp());
 
