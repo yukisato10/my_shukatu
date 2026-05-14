@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../widgets/native_ad_widget.dart';
-import '../widgets/ad_scaffold.dart';
 
 class AgentPage extends StatefulWidget {
   const AgentPage({super.key});
@@ -99,24 +99,24 @@ class _AgentPageState extends State<AgentPage>
       return matchesCategory && matchesSearch;
     }).toList();
   }
+
   List<Widget> _buildNewsListWithAds(List<JobNewsItem> newsList) {
     final widgets = <Widget>[];
 
     for (int i = 0; i < newsList.length; i++) {
       widgets.add(
         Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.only(bottom: 10),
           child: _NewsCard(news: newsList[i]),
         ),
       );
 
-      final shouldShowAd =
-          (i + 1) % 3 == 0 && i != newsList.length - 1;
+      final shouldShowAd = (i + 1) % 4 == 0 && i != newsList.length - 1;
 
       if (shouldShowAd) {
         widgets.add(
           const Padding(
-            padding: EdgeInsets.only(bottom: 12),
+            padding: EdgeInsets.only(bottom: 10),
             child: NativeAdWidget(),
           ),
         );
@@ -145,10 +145,7 @@ class _AgentPageState extends State<AgentPage>
       }
     }
 
-    return [
-      'すべて',
-      ...tagSet,
-    ];
+    return ['すべて', ...tagSet];
   }
 
   List<String> _readServiceTags(Map<String, dynamic> data) {
@@ -169,11 +166,9 @@ class _AgentPageState extends State<AgentPage>
     final tag2 = (data['tag2'] ?? '').toString().trim();
     final tag3 = (data['tag3'] ?? '').toString().trim();
 
-    final tagFields = [
-      tag1,
-      tag2,
-      tag3,
-    ].where((tag) => tag.isNotEmpty).toList();
+    final tagFields = [tag1, tag2, tag3]
+        .where((tag) => tag.isNotEmpty)
+        .toList();
 
     if (tagFields.isNotEmpty) {
       return tagFields;
@@ -203,6 +198,7 @@ class _AgentPageState extends State<AgentPage>
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
         body: SafeArea(
           child: Column(
             children: [
@@ -264,7 +260,7 @@ class _AgentPageState extends State<AgentPage>
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),
             children: const [_LoadingBox()],
           );
         }
@@ -273,7 +269,7 @@ class _AgentPageState extends State<AgentPage>
           return RefreshIndicator(
             onRefresh: _refreshNews,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),
               physics: const AlwaysScrollableScrollPhysics(),
               children: const [
                 _ErrorBox(message: 'ニュース取得に失敗しました'),
@@ -289,9 +285,8 @@ class _AgentPageState extends State<AgentPage>
 
           return JobNewsItem(
             title: (data['title'] ?? '').toString(),
-            summary: (data['summary'] ??
-                data['description'] ??
-                '概要はありません')
+            summary:
+            (data['summary'] ?? data['description'] ?? '概要はありません')
                 .toString(),
             category: (data['category'] ?? 'その他').toString(),
             date: _formatTimestamp(data['publishedAt'] ?? data['createdAt']),
@@ -307,25 +302,17 @@ class _AgentPageState extends State<AgentPage>
           onRefresh: _refreshNews,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),
             children: [
-              Row(
+              const Row(
                 children: [
-                  const Icon(Icons.article_outlined, size: 22),
-                  const SizedBox(width: 8),
-                  const Text(
+                  Icon(Icons.article_outlined, size: 22),
+                  SizedBox(width: 8),
+                  Text(
                     '就活ニュース',
                     style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${filteredNews.length}件',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
                     ),
                   ),
                 ],
@@ -355,7 +342,7 @@ class _AgentPageState extends State<AgentPage>
                   });
                 },
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               if (filteredNews.isEmpty)
                 const _EmptyNewsBox()
               else
@@ -548,8 +535,9 @@ class _CategoryChips extends StatelessWidget {
               labelStyle: TextStyle(
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                color:
-                selected ? const Color(0xFF167A7A) : Colors.grey.shade700,
+                color: selected
+                    ? const Color(0xFF167A7A)
+                    : Colors.grey.shade700,
               ),
             ),
           );
@@ -616,87 +604,363 @@ class _NewsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasImage = news.imageUrl.trim().isNotEmpty;
+
     return InkWell(
-      onTap: news.url.trim().isEmpty ? null : () => _openUrl(context, news.url),
-      borderRadius: BorderRadius.circular(18),
+      onTap: news.url.trim().isEmpty
+          ? null
+          : () => _showNewsOpenDialog(context, news),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.all(15),
-        decoration: _cardDecoration(),
-        child: Column(
+        padding: const EdgeInsets.all(10),
+        decoration: _compactCardDecoration(),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (news.imageUrl.trim().isNotEmpty) ...[
+            if (hasImage) ...[
               ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  width: 108,
+                  height: 82,
                   child: Image.network(
                     news.imageUrl,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) {
-                      return const SizedBox.shrink();
+                      return _NewsImageFallback(category: news.category);
                     },
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(width: 10),
+            ] else ...[
+              SizedBox(
+                width: 108,
+                height: 82,
+                child: _NewsImageFallback(category: news.category),
+              ),
+              const SizedBox(width: 10),
             ],
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                _CategoryBadge(text: news.category),
-                if (news.date.isNotEmpty)
-                  Text(
-                    news.date,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade600,
+            Expanded(
+              child: SizedBox(
+                height: 82,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _CategoryBadge(text: news.category),
+                        if (news.date.isNotEmpty)
+                          Text(
+                            news.date,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              news.title,
-              style: const TextStyle(
-                fontSize: 15.5,
-                fontWeight: FontWeight.bold,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 7),
-            Text(
-              news.summary,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.45,
-                color: Colors.grey.shade800,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Text(
-                    news.source,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade500,
+                    const SizedBox(height: 5),
+                    Expanded(
+                      child: Text(
+                        news.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13.8,
+                          fontWeight: FontWeight.bold,
+                          height: 1.32,
+                          color: Color(0xFF111827),
+                        ),
+                      ),
                     ),
-                  ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            news.source,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.open_in_new_rounded,
+                          size: 15,
+                          color: Colors.grey.shade400,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                _LinkText(text: 'サイトへ'),
-              ],
+              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showNewsOpenDialog(
+    BuildContext context,
+    JobNewsItem news,
+    ) async {
+  if (news.url.trim().isEmpty) return;
+
+  final shouldOpen = await showDialog<bool>(
+    context: context,
+    barrierDismissible: true,
+    builder: (dialogContext) {
+      final hasImage = news.imageUrl.trim().isNotEmpty;
+
+      return Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasImage)
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Image.network(
+                    news.imageUrl,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return _NewsDialogImageFallback(
+                        category: news.category,
+                      );
+                    },
+                  ),
+                )
+              else
+                _NewsDialogImageFallback(
+                  category: news.category,
+                ),
+
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _CategoryBadge(text: news.category),
+                        if (news.date.isNotEmpty)
+                          Text(
+                            news.date,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Text(
+                      news.title,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        height: 1.45,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.grey.shade200,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(
+                                Icons.auto_awesome,
+                                size: 16,
+                                color: Color(0xFF167A7A),
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'AI要約',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF167A7A),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 7),
+                          Text(
+                            news.summary.trim().isEmpty
+                                ? '要約はありません。'
+                                : news.summary,
+                            maxLines: 5,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              height: 1.5,
+                              color: Colors.grey.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    if (news.source.trim().isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        news.source,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 18),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              Navigator.of(dialogContext).pop(false);
+                            },
+                            style: OutlinedButton.styleFrom(
+                              padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                              side: BorderSide(color: Colors.grey.shade300),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                            child: Text(
+                              '閉じる',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.of(dialogContext).pop(true);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF167A7A),
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                            child: const Text(
+                              'サイトへ',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+
+  if (shouldOpen == true) {
+    if (!context.mounted) return;
+    await _openUrl(context, news.url);
+  }
+}
+class _NewsImageFallback extends StatelessWidget {
+  final String category;
+
+  const _NewsImageFallback({
+    required this.category,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.article_outlined,
+          size: 28,
+          color: Color(0xFF2563EB),
+        ),
+      ),
+    );
+  }
+}
+
+class _NewsDialogImageFallback extends StatelessWidget {
+  final String category;
+
+  const _NewsDialogImageFallback({
+    required this.category,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 150,
+      width: double.infinity,
+      color: const Color(0xFFEFF6FF),
+      child: const Center(
+        child: Icon(
+          Icons.article_outlined,
+          size: 42,
+          color: Color(0xFF2563EB),
         ),
       ),
     );
@@ -777,7 +1041,6 @@ class _AgentServiceCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
-
           InkWell(
             onTap: agent.url.trim().isEmpty
                 ? null
@@ -820,35 +1083,19 @@ class _AgentServiceCard extends StatelessWidget {
   }
 }
 
-class _LinkText extends StatelessWidget {
-  final String text;
-
-  const _LinkText({
-    required this.text,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).primaryColor,
-          ),
-        ),
-        const SizedBox(width: 3),
-        Icon(
-          Icons.chevron_right,
-          size: 18,
-          color: Theme.of(context).primaryColor,
-        ),
-      ],
-    );
-  }
+BoxDecoration _compactCardDecoration() {
+  return BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: Colors.grey.shade200),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withOpacity(0.03),
+        blurRadius: 8,
+        offset: const Offset(0, 3),
+      ),
+    ],
+  );
 }
 
 BoxDecoration _cardDecoration() {
@@ -874,7 +1121,7 @@ class _CategoryBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: const Color(0xFFEFF6FF),
         borderRadius: BorderRadius.circular(99),
@@ -882,7 +1129,7 @@ class _CategoryBadge extends StatelessWidget {
       child: Text(
         text,
         style: const TextStyle(
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: FontWeight.bold,
           color: Color(0xFF2563EB),
         ),
