@@ -487,7 +487,7 @@ async function fetchAndSaveNews() {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         expiresAt: admin.firestore.Timestamp.fromDate(
-          new Date(Date.now() + 20 * 24 * 60 * 60 * 1000)
+          new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)
         ),
       },
       { merge: true }
