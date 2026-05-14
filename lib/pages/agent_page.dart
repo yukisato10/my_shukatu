@@ -28,13 +28,13 @@ class _AgentPageState extends State<AgentPage>
   static const List<String> _newsCategories = [
     'すべて',
     '就活',
-    'コンサル',
     'IT ・ 通信',
+    '人材 ・ 教育',
     'メーカー',
     '金融',
     '商社',
-    '広告 ・ 出版',
-    '人材 ・ 教育',
+    '広告 ・ 出版'
+    'コンサル',
     'インフラ ・ 交通',
     '不動産 ・ 建設',
     '旅行 ・ 観光',
