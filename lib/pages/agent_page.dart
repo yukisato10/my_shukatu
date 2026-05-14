@@ -111,7 +111,7 @@ class _AgentPageState extends State<AgentPage>
         ),
       );
 
-      final shouldShowAd = (i + 1) % 4 == 0 && i != newsList.length - 1;
+      final shouldShowAd = (i + 1) % 3 == 0 && i != newsList.length - 1;
 
       if (shouldShowAd) {
         widgets.add(
