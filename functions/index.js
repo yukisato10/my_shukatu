@@ -178,7 +178,7 @@ const EXCLUDE_KEYWORDS = [
 ];
 
 function buildSearchQuery() {
-  return "(就活 OR 新卒 OR 就職活動　OR 業界動向) AND (人気 OR 大学生 OR アンケート OR 採用 OR インターン OR 面接 OR ES OR 内定 OR 説明会 OR SPI OR 年収 OR 初任給 OR 採用人数 OR ランキング OR IT業界 OR DX人材 OR 生成AI OR SaaS OR 通信業界 OR コンサル OR 戦略コンサル OR メーカー業界 OR 半導体 OR 自動車業界 OR 金融業界 OR 銀行 OR 証券 OR 商社 OR 広告業界 OR 出版社 OR 人材業界 OR 教育業界 OR インフラ業界 OR 鉄道業界 OR 不動産業界 OR 建設業界 OR 旅行業界 OR 観光業界 OR 医療業界 OR 福祉業界 OR 官公庁 OR 自治体 OR 小売業界 OR 流通業界)";
+  return " (就活 OR 新卒 OR 就職活動　OR 業界動向 OR インターン) AND (人気 OR 大学生 OR アンケート OR 採用 OR インターン OR 面接 OR ES OR 内定 OR 説明会 OR SPI OR 年収 OR 初任給 OR 採用人数 OR ランキング OR IT業界 OR DX人材 OR 生成AI OR SaaS OR 通信業界 OR コンサル OR 戦略コンサル OR メーカー業界 OR 半導体 OR 自動車業界 OR 金融業界 OR 銀行 OR 証券 OR 商社 OR 広告業界 OR 出版社 OR 人材業界 OR 教育業界 OR インフラ業界 OR 鉄道業界 OR 不動産業界 OR 建設業界 OR 旅行業界 OR 観光業界 OR 医療業界 OR 福祉業界 OR 官公庁 OR 自治体 OR 小売業界 OR 流通業界)";
 }
 
 function getArticleText(article) {
@@ -277,6 +277,7 @@ async function analyzeArticle(article) {
 - 初任給
 - 採用人数
 - 業界研究に役立つ企業動向
+- 業界研究に役立つ業界動向
 - AI/DX/半導体/金融/商社/メーカー/コンサルなど、就活生の企業研究に役立つ内容
 - 人材不足、リスキリング、働き方、賃上げなど就活に関係する内容
 
@@ -509,7 +510,7 @@ async function fetchAndSaveNews() {
 
 exports.fetchJobNews = onSchedule(
   {
-    schedule: "every 24 hours",
+    schedule: "0 13 * * *",
     timeZone: "Asia/Tokyo",
     secrets: [NEWS_API_KEY, OPENAI_API_KEY],
     timeoutSeconds: 300,
