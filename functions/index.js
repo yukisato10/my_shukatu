@@ -309,8 +309,8 @@ ${VALID_CATEGORIES.map((c) => `- ${c}`).join("\n")}
 
 scoreの基準:
 - 90〜100: 就活生にかなり有益
-- 75〜89: 掲載してよい
-- 60〜74: 微妙
+- 71〜89: 掲載してよい
+- 60〜70: 微妙
 - 0〜59: 除外
 
 記事:
@@ -451,7 +451,7 @@ async function fetchAndSaveNews() {
 
     const aiResult = await analyzeArticle(article);
 
-    if (!aiResult.isUseful || aiResult.score < 75) {
+    if (!aiResult.isUseful || aiResult.score < 71) {
       skippedCount++;
       continue;
     }
