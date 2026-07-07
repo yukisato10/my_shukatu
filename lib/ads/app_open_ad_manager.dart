@@ -20,7 +20,7 @@ class AppOpenAdManager {
   static const Duration cooldown = Duration(hours: 3);
 
   // App Open広告は4時間で期限切れ
-  static const Duration maxCacheAge = Duration(hours: 4);
+  static const Duration maxCacheAge = Duration(hours: 2);
 
   static bool get _isAdAvailable {
     return _appOpenAd != null &&
