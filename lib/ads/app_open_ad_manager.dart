@@ -17,7 +17,7 @@ class AppOpenAdManager {
   static const _kLastShownMillis = 'app_open_last_shown_millis';
 
   // 6時間ごとに1回まで表示　→　5に変更
-  static const Duration cooldown = Duration(hours: 5);
+  static const Duration cooldown = Duration(hours: 6);
 
   // App Open広告は4時間で期限切れ → 2に変更
   static const Duration maxCacheAge = Duration(hours: 4);
